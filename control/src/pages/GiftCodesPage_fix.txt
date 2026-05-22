@@ -1,0 +1,9 @@
+        {codes.length === 0 && (
+          <div className="text-center py-8 opacity-50">
+            {language === 'ar' ? 'لا توجد أكواد هدايا' : 'No gift codes found'}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
