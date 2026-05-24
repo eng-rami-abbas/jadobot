@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="ar">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Spin Wheel</title>
+
+  <style>
+    body{
+      margin:0;
+      height:100vh;
+      font-family:system-ui,Segoe UI,Roboto,Arial;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+
+      background-image: url("background.png");
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-attachment: fixed;
+
+      color:#e6eef6;
+      position:relative;
+    }
+
+    body::after {
+      content: "ALSHAHEN ICHANCY";
+      position: absolute;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 12px;
+      opacity:0.4;
+      letter-spacing:1px;
+    }
+
+    .wrap{
+      width:360px;
+      max-width:92%;
+      text-align:center;
+      padding:20px;
+    }
+
+    #wheelBox{
+      position:relative;
+      width:320px;
+      height:320px;
+      margin:0 auto;
+    }
+
+    #wheel{
+      width:100%;
+      height:100%;
+      border-radius:50%;
+      display:block;
+      transform-origin:50% 50%;
+    }
+
+    #pointer{
+      position:absolute;
+      top:-18px;
+      left:50%;
+      transform:translateX(-50%);
+      width:48px;
+      pointer-events:none;
+      z-index:5;
+    }
+
+    #spinBtn{
+      margin-top:16px;
+      padding:12px 18px;
+      background:#06b6d4;
+      border:none;
+      border-radius:10px;
+      color:#042;
+      font-weight:800;
+      cursor:pointer;
+      font-size:16px;
+    }
+
+    #msg{margin-top:12px;font-size:15px;color:#cbd5e1}
+    #countdown{margin-top:8px;color:#9fb6c6;font-size:13px}
+    .disabled{opacity:0.6;pointer-events:none}
+  </style>
+</head>
+
+<body>
+
+  <!-- 🔊 صوت الدوران -->
+  <audio id="spinSound" src="spin.mp3" preload="auto"></audio>
+
+  <div class="wrap">
+    <div id="wheelBox">
+      <img id="wheel" src="wheel.png" alt="wheel">
+      <img id="pointer" src="pointer.png" alt="pointer">
+    </div>
+
+    <button id="spinBtn">لديك تدويرة مجانية</button>
+    <div id="msg"></div>
+    <div id="countdown"></div>
+  </div>
+
+<script>
+  const tg = window.Telegram?.WebApp || null;
+  const user = tg?.initDataUnsafe?.user || {};
+  const user_id = user.id || 'guest';
+  const STORAGE_KEY = 'ichancy_last_spin_' + user_id;
+
+  const HARD_LUCK_CENTER_ANGLE = 180;
+
+  const wheel = document.getElementById('wheel');
+  const spinBtn = document.getElementById('spinBtn');
+  const msg = document.getElementById('msg');
+  const countdown = document.getElementById('countdown');
+
+  const spinSound = document.getElementById('spinSound');
+
+  let spinning = false;
+  let lastFinalRotation = 0;
+
+  function canSpin() {
+    const last = localStorage.getItem(STORAGE_KEY);
+    if (!last) return true;
+    return (Date.now() - Number(last)) >= 24*3600*1000;
+  }
+
+  function setSpinTime() {
+    localStorage.setItem(STORAGE_KEY, String(Date.now()));
+    updateCountdown();
+  }
+
+  function updateCountdown() {
+    const last = Number(localStorage.getItem(STORAGE_KEY));
+    if (!last) {
+      countdown.textContent = '';
+      spinBtn.classList.remove('disabled');
+      return;
+    }
+    const remainMs = 24*3600*1000 - (Date.now() - last);
+    if (remainMs <= 0) {
+      countdown.textContent = '';
+      spinBtn.classList.remove('disabled');
+      return;
+    }
+    spinBtn.classList.add('disabled');
+    const s = Math.floor(remainMs/1000);
+    const h = Math.floor(s/3600);
+    const m = Math.floor((s%3600)/60);
+    const sec = s%60;
+    countdown.textContent = `التدويرة التالية خلال ${h}س ${m}د ${sec}ث`;
+  }
+
+  function spinToHardLuck() {
+    if (spinning) return;
+    if (!canSpin()) {
+      msg.textContent = 'انتظر حتى انتهاء العدّاد';
+      return;
+    }
+
+    spinning = true;
+    msg.textContent = 'جاري الدوران...';
+
+    const fullSpins = 4 + Math.floor(Math.random() * 3);
+    const targetOffset = (360 - HARD_LUCK_CENTER_ANGLE) % 360;
+    const finalRotation = fullSpins * 360 + targetOffset;
+
+    lastFinalRotation = finalRotation;
+
+    /* 🎯 مدة الدوران الجديدة: 3 ثواني */
+    wheel.style.transition = 'transform 3s cubic-bezier(.12,.25,.15,1)';
+
+    /* 🔊 تشغيل صوت الدوران */
+    spinSound.currentTime = 0;
+    spinSound.play();
+    spinSound.loop = true;
+
+    requestAnimationFrame(() => {
+      wheel.style.transform = `rotate(${finalRotation}deg)`;
+    });
+
+    wheel.addEventListener('transitionend', onStop, { once: true });
+
+    /* ⏱️ مهلة أمان */
+    setTimeout(() => { if (spinning) onStop(); }, 3500);
+  }
+
+  function onStop() {
+    spinning = false;
+
+    /* 🔇 إيقاف صوت الدوران */
+    spinSound.pause();
+    spinSound.currentTime = 0;
+
+    wheel.style.transition = 'none';
+    wheel.style.transform = `rotate(${lastFinalRotation}deg)`;
+
+    msg.textContent = 'حظ أوفر، حاول غداً';
+    setSpinTime();
+
+    try {
+      if (tg && typeof tg.sendData === 'function') {
+        tg.sendData(JSON.stringify({ prize: 'HARD_LUCK', user_id }));
+      }
+    } catch (e) {}
+
+    updateCountdown();
+  }
+
+  spinBtn.addEventListener('click', () => {
+    if (!canSpin()) {
+      msg.textContent = 'الرجاء الانتظار حتى انتهاء العدّاد';
+      return;
+    }
+    spinToHardLuck();
+  });
+
+  setInterval(updateCountdown, 1000);
+  updateCountdown();
+</script>
+
+</body>
+</html>
