@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>JADO BOT - لوحة الإدارة</title>
+  <style>
+    body { background: #000; color: gold; font-family: sans-serif; padding: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid gold; padding: 10px; text-align: center; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h1>🎰 لوحة تحكم الروليت</h1>
+  <div id="auth-section">
+    <input type="password" id="adminPass" placeholder="كلمة المرور">
+    <button onclick="login()">دخول</button>
+  </div>
+  <div id="dashboard" class="hidden">
+    <h2>آخر التدويرات</h2>
+    <table id="spinsTable"><thead><tr><th>المستخدم</th><th>الجائزة</th><th>التاريخ</th></tr></thead><tbody></tbody></table>
+    <h2>جوائز Telegram Premium معلقة</h2>
+    <ul id="premiumList"></ul>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const supabase = window.supabase.createClient('YOUR_URL', 'YOUR_ANON_KEY');
+    async function login() {
+      const pass = document.getElementById('adminPass').value;
+      // يمكن استخدام Supabase Auth أو كلمة مرور بسيطة
+      if (pass === 'admin123') { // استبدلها بكلمة مرور قوية
+        document.getElementById('auth-section').classList.add('hidden');
+        document.getElementById('dashboard').classList.remove('hidden');
+        loadData();
+      }
+    }
+    async function loadData() {
+      const { data: spins } = await supabase.from('spins').select('*, users(first_name, username)').order('created_at', {ascending: false}).limit(20);
+      const tbody = document.querySelector('#spinsTable tbody');
+      tbody.innerHTML = '';
+      spins.forEach(s => {
+        tbody.innerHTML += `<tr><td>${s.users.first_name}</td><td>${s.result_type} ${s.result_value||''}</td><td>${new Date(s.created_at).toLocaleString()}</td></tr>`;
+      });
+      const { data: premiums } = await supabase.from('premium_rewards').select('*, users(first_name, username)').eq('processed', false);
+      document.getElementById('premiumList').innerHTML = premiums.map(p => `<li>${p.users.first_name} - لم تُمنح بعد</li>`).join('');
+    }
+  </script>
+</body>
+</html>
