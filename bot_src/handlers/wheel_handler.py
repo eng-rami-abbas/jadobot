@@ -14,12 +14,14 @@ logger = Logger.getLogger()
 # إعدادات العجلة
 WHEEL_WEBAPP_URL = os.getenv(
     'WHEEL_WEBAPP_URL',
-    'https://yourusername.github.io/jadoo-bot-latest/wheel_project/wheel.html',
+    'https://eng-rami-abbas.github.io/jadobot/wheel_project/',
 ).rstrip('/')
 
 
 def get_wheel_webapp_url(telegram_id: str) -> str:
-    base = WHEEL_WEBAPP_URL if WHEEL_WEBAPP_URL.endswith('.html') else f"{WHEEL_WEBAPP_URL}/wheel.html"
+    base = WHEEL_WEBAPP_URL
+    if not base.endswith('.html'):
+        base = f"{base}/index.html" if not base.endswith('/') else f"{base}index.html"
     sep = '&' if '?' in base else '?'
     return f"{base}{sep}{urlencode({'user_id': telegram_id})}"
 
@@ -29,6 +31,7 @@ async def handle_spin_wheel(update, context):
     await query.answer()
 
     user_id = str(update.effective_user.id)
+    extra_spins = supa.get_wheel_extra_spins(user_id)
 
     try:
         last_spin = supa.get_wheel_last_spin(user_id)
@@ -41,7 +44,7 @@ async def handle_spin_wheel(update, context):
                 last_spin_time = last_spin_time.replace(tzinfo=timezone.utc)
             last_local = last_spin_time.astimezone(damascus)
             now_local = datetime.now(damascus)
-            if last_local.date() == now_local.date():
+            if last_local.date() == now_local.date() and extra_spins <= 0:
                 await query.edit_message_text(
                     "⏰ لقد استخدمت اللفة المجانية اليوم. تعود اللفة بعد شحن يوم جديد.",
                     reply_markup=get_wheel_keyboard()
@@ -51,7 +54,7 @@ async def handle_spin_wheel(update, context):
         logger.error(f"Error checking wheel cooldown: {e}")
 
     try:
-        if not supa.has_deposited_today(user_id):
+        if not supa.has_deposited_today(user_id) and extra_spins <= 0:
             await query.edit_message_text(
                 "🔒 اللفة المجانية متاحة فقط بعد شحن اليوم نفسه. قم بعمل إيداع واحد اليوم لتحصل على لفة مجانية.",
                 reply_markup=get_wheel_keyboard()
@@ -94,75 +97,41 @@ def get_wheel_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 async def handle_web_app_data(update, context):
-    """معالجة البيانات المرسلة من Web App"""
+    """إشعار المستخدم بنتيجة الروليت (الجائزة تُصرف من API السيرفر)."""
     if not update.message or not update.message.web_app_data:
         return
 
     try:
         data = json.loads(update.message.web_app_data.data)
-        prize = data.get('prize', {})
+        prize = data.get('prize', {}) or {}
         user_id = str(update.effective_user.id)
-
-        # Prevent double spin same day
-        last_spin = supa.get_wheel_last_spin(user_id)
-        if last_spin:
-            from datetime import datetime, timezone
-            import pytz
-            damascus = pytz.timezone("Asia/Damascus")
-            last_spin_time = datetime.fromisoformat(last_spin.replace("Z", "+00:00"))
-            if last_spin_time.tzinfo is None:
-                last_spin_time = last_spin_time.replace(tzinfo=timezone.utc)
-            if last_spin_time.astimezone(damascus).date() == datetime.now(damascus).date():
-                await update.message.reply_text("⏰ لقد استخدمت لفة اليوم مسبقاً.")
-                return
-
         logger.info(f"Web App data received: {data}")
 
-        from datetime import datetime, timezone
-        now_utc = datetime.now(timezone.utc)
+        prize_type = prize.get('type')
+        label = prize.get('label_ar') or prize.get('label') or ''
+        amount = int(prize.get('amount') or 0)
+        percent = float(prize.get('percent') or 0)
 
-        prize_type = prize.get('type') if isinstance(prize, dict) else None
-
-        label = prize.get('label') or prize.get('cad_text') or ''
-
-        if prize_type == 'cash':
-            display_amount = int(prize.get('amount', 0))
-            credit_amount = display_amount * 100  # same units as deposit (amount_syp stored x100)
-            current_balance = supa.get_user_balance(user_id)
-            new_balance = int(current_balance + credit_amount)
-            supa.update_user_balance(user_id, new_balance)
-            supa.set_wheel_last_spin(user_id, now_utc.isoformat())
-
+        if prize_type == 'cash' and amount:
+            bal = supa.get_user_balance(user_id)
             await update.message.reply_text(
-                f"🎉 تهانينا! ربحت {display_amount:,.0f} ل.س وتم إضافته إلى رصيدك.\n"
-                f"💳 رصيدك الآن: {new_balance / 100:,.0f} ل.س"
+                f"🎉 مبروك!\nلقد ربحت {amount:,} ل.س\n💳 رصيدك: {bal / 100:,.0f} ل.س"
             )
-
         elif prize_type == 'bonus':
-            bonus_percent = float(prize.get('percent', 0) or 0)
-            supa.set_wheel_last_spin(user_id, now_utc.isoformat(), pending_bonus_percent=bonus_percent)
-
             await update.message.reply_text(
-                f"🎉 مبروك! ربحت بونص {bonus_percent:g}% على أول إيداع بعد هذه اللفة.\n"
-                f"سيُضاف البونص تلقائياً عند موافقة الإدارة على إيداعك القادم (مرة واحدة فقط)."
+                f"🎉 مبروك!\nبونص {percent:g}% على أول إيداع قادم (مرة واحدة)."
             )
-
-        elif prize_type == 'gift':
-            supa.set_wheel_last_spin(user_id, now_utc.isoformat())
+        elif prize_type == 'premium':
             await update.message.reply_text(
-                f"🎁 مبروك! {label or 'حصلت على هدية من العجلة'}.\nتواصل مع الدعم لاستلامها."
+                f"🎁 مبروك!\nفزت بـ Telegram Premium.\nسيتواصل معك الدعم قريباً."
             )
-
         elif prize_type == 'respin':
             await update.message.reply_text(
-                "🔄 حظ أوفر في هذه اللفة — يمكنك المحاولة غداً بعد إيداع جديد."
+                "🔄 مبروك!\nحصلت على إعادة تدوير — اضغط «اللفة المجانية» ولفّ مرة أخرى."
             )
-            supa.set_wheel_last_spin(user_id, now_utc.isoformat())
-
         else:
-            supa.set_wheel_last_spin(user_id, now_utc.isoformat())
             await update.message.reply_text(
-                f"😢 حظ أوفر! {label or 'لم تحصل على جائزة هذه المرة.'}\nتعود اللفة المجانية غداً بعد إيداع."
+                f"😔 حظ أوفر!\n{label or 'حاول مرة أخرى غداً بعد إيداع.'}"
             )
 
     except json.JSONDecodeError:

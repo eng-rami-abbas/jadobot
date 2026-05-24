@@ -581,3 +581,53 @@ def clear_pending_wheel_bonus(telegram_id):
             .execute()
     except Exception as e:
         logger.error(f"clear_pending_wheel_bonus error: {e}")
+
+
+def get_wheel_extra_spins(telegram_id) -> int:
+    try:
+        res = get_client().table("wheel_spins") \
+            .select("extra_spins") \
+            .eq("telegram_id", str(telegram_id)) \
+            .maybe_single() \
+            .execute()
+        if res.data:
+            return int(res.data.get("extra_spins") or 0)
+    except Exception as e:
+        logger.error(f"get_wheel_extra_spins error: {e}")
+    return 0
+
+
+def set_wheel_extra_spins(telegram_id, count: int):
+    try:
+        get_client().table("wheel_spins").upsert({
+            "telegram_id": str(telegram_id),
+            "extra_spins": max(0, int(count)),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }, on_conflict="telegram_id").execute()
+    except Exception as e:
+        logger.error(f"set_wheel_extra_spins error: {e}")
+
+
+def get_wheel_extra_spins(telegram_id) -> int:
+    try:
+        res = get_client().table("wheel_spins") \
+            .select("extra_spins") \
+            .eq("telegram_id", str(telegram_id)) \
+            .maybe_single() \
+            .execute()
+        if res.data:
+            return int(res.data.get("extra_spins") or 0)
+    except Exception as e:
+        logger.error(f"get_wheel_extra_spins error: {e}")
+    return 0
+
+
+def set_wheel_extra_spins(telegram_id, count: int):
+    try:
+        get_client().table("wheel_spins").upsert({
+            "telegram_id": str(telegram_id),
+            "extra_spins": max(0, int(count)),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }, on_conflict="telegram_id").execute()
+    except Exception as e:
+        logger.error(f"set_wheel_extra_spins error: {e}")
