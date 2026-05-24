@@ -86,8 +86,7 @@ def getKeyboard(user_id=None):
         [   InlineKeyboardButton("السجل 📜", callback_data='log'),
         ],
 
-        [InlineKeyboardButton("اللفة المجانية 🎡", web_app=WebAppInfo(url="https://eng-rami-abbas.github.io/jadobot/wheel_project/"))
-        ],
+        [InlineKeyboardButton("اللفة المجانية 🎡", callback_data="spin_wheel")],
         
         [InlineKeyboardButton("تطبيق vpn لتشغيل كامل اقسام الموقع", url="https://t.me/Ichancy_boot_Vbn/3"),
          InlineKeyboardButton("ichancy apk", url="https://android.betcoapps.com/novichok/ichancy_com/ichancy_com.apk")

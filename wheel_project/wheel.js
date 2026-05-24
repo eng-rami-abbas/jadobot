@@ -4,7 +4,20 @@
 
 const API_BASE = window.location.origin;
 const PARAMS = new URLSearchParams(window.location.search);
-const USER_ID = PARAMS.get('user_id');
+const tg = window.Telegram?.WebApp;
+const IS_TELEGRAM_WEBAPP = Boolean(tg);
+
+if (IS_TELEGRAM_WEBAPP) {
+    tg.ready();
+    tg.expand();
+}
+
+const USER_ID = PARAMS.get('user_id')
+    || (IS_TELEGRAM_WEBAPP && tg.initDataUnsafe?.user?.id
+        ? String(tg.initDataUnsafe.user.id)
+        : null);
+
+let pendingSpinPayload = null;
 
 const wheel = document.querySelector('.wheel');
 const startButton = document.querySelector('.button');
@@ -691,10 +704,34 @@ function showMsg(text, isError = true) {
 }
 
 // ── التحقق من Supabase ──
+function sendPrizeToTelegramBot(result, label) {
+    if (!IS_TELEGRAM_WEBAPP || !result) return;
+    try {
+        tg.sendData(JSON.stringify({
+            prize: {
+                type: result.type,
+                amount: result.amount,
+                percent: result.percent,
+                label: label || result.label || '',
+            },
+        }));
+        setTimeout(() => tg.close(), 400);
+    } catch (e) {
+        console.error('sendData failed:', e);
+    }
+}
+
 async function checkSpinEligibility() {
     if (!USER_ID) {
         showMsg('تعذر تحديد المستخدم');
         startButton.classList.add('disabled');
+        return;
+    }
+
+    if (IS_TELEGRAM_WEBAPP) {
+        document.getElementById('has_free_spin').value = 'True';
+        document.getElementById('clock').style.display = 'none';
+        updateButtonState();
         return;
     }
 
@@ -873,6 +910,30 @@ startButton.addEventListener('click', () => {
     }
     startButton.classList.remove('respin-active');
 
+    const runSpinAnimation = () => {
+        landingDeg = normalizeRotationDegrees(payload.degree);
+        deg = buildVisualSpinTarget(payload.degree);
+        winned = parseInt(payload.win);
+        win_type = parseInt(payload.win_type);
+        cad_text = payload.cad_text;
+        chance = payload.chance;
+        rewardType = String(payload.reward_type || '');
+        pendingSpinPayload = payload;
+
+        const spinDurationMs = 12000;
+        const r3dIdx = (wheelSegments || []).findIndex(function(s){ return s.code === payload.chance; });
+        setBallResult(r3dIdx >= 0 ? r3dIdx : 0, spinDurationMs);
+
+        wheel.style.transition = `transform ${spinDurationMs}ms cubic-bezier(0.16, 1, 0.3, 1)`;
+        applyWheelRotation(deg);
+        wheel.classList.add('blur');
+    };
+
+    if (IS_TELEGRAM_WEBAPP) {
+        runSpinAnimation();
+        return;
+    }
+
     fetch(API_BASE + '/spin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -890,22 +951,7 @@ startButton.addEventListener('click', () => {
             showWheelStoppedMessage('⏹️ ' + (json.message || 'فشل تنفيذ الدوران'));
             return;
         }
-
-        landingDeg = normalizeRotationDegrees(payload.degree);
-        deg = buildVisualSpinTarget(payload.degree);
-        winned = parseInt(payload.win);
-        win_type = parseInt(payload.win_type);
-        cad_text = payload.cad_text;
-        chance = payload.chance;
-        rewardType = String(payload.reward_type || '');
-
-        const spinDurationMs = 12000;
-        const r3dIdx = (wheelSegments || []).findIndex(function(s){ return s.code === payload.chance; });
-        setBallResult(r3dIdx >= 0 ? r3dIdx : 0, spinDurationMs);
-
-        wheel.style.transition = `transform ${spinDurationMs}ms cubic-bezier(0.16, 1, 0.3, 1)`;
-        applyWheelRotation(deg);
-        wheel.classList.add('blur');
+        runSpinAnimation();
     })
     .catch(error => {
         console.error('خطأ في الطلب:', error);
@@ -940,6 +986,11 @@ wheel.addEventListener('transitionend', (event) => {
 
     if (cad_text && cad_text.trim()) {
         showResult();
+    }
+
+    if (IS_TELEGRAM_WEBAPP && pendingSpinPayload && !isTrialSpinActive) {
+        sendPrizeToTelegramBot(pendingSpinPayload.result, pendingSpinPayload.cad_text);
+        pendingSpinPayload = null;
     }
 
     if (isTrialSpinActive) {

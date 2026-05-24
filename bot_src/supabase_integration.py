@@ -258,33 +258,75 @@ def insert_deposit(
         raise
 
 
-def get_user_balance(telegram_id: int) -> float:
+def get_user_balance(telegram_id) -> float:
     """Get user current balance."""
     try:
-        res = get_client().table("users") \
-            .select("balance_syp") \
-            .eq("telegram_id", telegram_id) \
-            .execute()
-        if res.data and len(res.data) > 0:
-            return float(res.data[0].get("balance_syp", 0))
+        client = get_client()
+        for tid in (telegram_id, str(telegram_id), int(telegram_id) if str(telegram_id).isdigit() else None):
+            if tid is None:
+                continue
+            res = client.table("users").select("balance_syp").eq("telegram_id", tid).execute()
+            if res.data:
+                return float(res.data[0].get("balance_syp", 0))
         return 0
     except Exception as e:
         logger.error(f"get_user_balance error: {e}")
         return 0
 
 
-def update_user_balance(telegram_id: int, new_balance: float):
+def update_user_balance(telegram_id, new_balance: float):
     """Update user balance."""
     try:
-        res = get_client().table("users") \
-            .update({"balance_syp": new_balance}) \
-            .eq("telegram_id", telegram_id) \
-            .execute()
-        logger.info(f"✅ Updated balance for {telegram_id}: {new_balance}")
-        return res
+        client = get_client()
+        for tid in (telegram_id, str(telegram_id), int(telegram_id) if str(telegram_id).isdigit() else None):
+            if tid is None:
+                continue
+            res = client.table("users").update({"balance_syp": new_balance}).eq("telegram_id", tid).execute()
+            if res.data:
+                logger.info(f"Updated balance for {telegram_id}: {new_balance}")
+                return res
+        raise RuntimeError(f"User not found for telegram_id={telegram_id}")
     except Exception as e:
         logger.error(f"update_user_balance error: {e}")
         raise
+
+
+def get_bot_status() -> str:
+    try:
+        res = get_client().table("app_settings").select("value").eq("key", "bot_status").execute()
+        if res.data:
+            return res.data[0].get("value", "active")
+    except Exception as e:
+        logger.error(f"get_bot_status error: {e}")
+    return "active"
+
+
+def is_bot_paused() -> bool:
+    return get_bot_status() == "paused"
+
+
+def has_deposited_today(telegram_id) -> bool:
+    """At least one completed deposit today (Asia/Damascus calendar day)."""
+    try:
+        import pytz
+        tz = pytz.timezone("Asia/Damascus")
+        today_start = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+        client = get_client()
+        for tid in (int(telegram_id), str(telegram_id), telegram_id):
+            res = client.table("transactions") \
+                .select("id") \
+                .eq("type", "deposit") \
+                .eq("status", "completed") \
+                .eq("telegram_id", tid) \
+                .gte("created_at", today_start.isoformat()) \
+                .limit(1) \
+                .execute()
+            if res.data:
+                return True
+        return False
+    except Exception as e:
+        logger.error(f"has_deposited_today error: {e}")
+        return False
 
 
 # =========================
@@ -502,13 +544,40 @@ def get_wheel_last_spin(telegram_id: str) -> str:
         return None
 
 
-def set_wheel_last_spin(telegram_id: str, spin_time: str):
-    """Set last spin timestamp for a user"""
+def set_wheel_last_spin(telegram_id: str, spin_time: str, pending_bonus_percent: float = None):
+    """Set last spin timestamp for a user; optionally store wheel bonus for next deposit."""
     try:
-        get_client().table("wheel_spins").upsert({
-            "telegram_id": telegram_id,
+        row = {
+            "telegram_id": str(telegram_id),
             "last_spin_at": spin_time,
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }, on_conflict="telegram_id").execute()
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if pending_bonus_percent is not None:
+            row["pending_bonus_percent"] = float(pending_bonus_percent)
+        get_client().table("wheel_spins").upsert(row, on_conflict="telegram_id").execute()
     except Exception as e:
         logger.error(f"set_wheel_last_spin error: {e}")
+
+
+def get_pending_wheel_bonus(telegram_id) -> float:
+    try:
+        res = get_client().table("wheel_spins") \
+            .select("pending_bonus_percent") \
+            .eq("telegram_id", str(telegram_id)) \
+            .maybe_single() \
+            .execute()
+        if res.data:
+            return float(res.data.get("pending_bonus_percent") or 0)
+    except Exception as e:
+        logger.error(f"get_pending_wheel_bonus error: {e}")
+    return 0.0
+
+
+def clear_pending_wheel_bonus(telegram_id):
+    try:
+        get_client().table("wheel_spins") \
+            .update({"pending_bonus_percent": 0}) \
+            .eq("telegram_id", str(telegram_id)) \
+            .execute()
+    except Exception as e:
+        logger.error(f"clear_pending_wheel_bonus error: {e}")

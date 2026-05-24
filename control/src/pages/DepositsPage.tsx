@@ -44,7 +44,14 @@ export default function DepositsPage() {
   useEffect(() => { load(); }, [load]);
   useRealtime({ table: 'transactions', onInsert: () => load(), onUpdate: () => load() });
 
-  const approveDeposit = async (id: string, telegram_id: number, amount_syp: number, wallet_name: string, operation_number: number, wallet_key?: string) => {
+  const approveDeposit = async (
+    id: string,
+    telegram_id: number,
+    amount_syp: number,
+    wallet_name: string,
+    operation_number: number,
+    transfer_tx_id?: string,
+  ) => {
     // Ask for custom amount
     const customAmount = prompt(
       language === 'ar' 
@@ -73,9 +80,27 @@ export default function DepositsPage() {
         bonusPercentage = wallet?.bonus_percentage || 0;
       }
       
-      // Calculate bonus amount
+      // Calculate wallet bonus amount
       const bonusAmount = Math.floor(finalAmount * (bonusPercentage / 100));
-      const totalAmount = finalAmount + bonusAmount;
+      let totalAmount = finalAmount + bonusAmount;
+
+      // Wheel bonus from عجلة الحظ (one-time on next deposit)
+      let wheelBonusAmount = 0;
+      let wheelBonusPercent = 0;
+      const { data: wheelRow } = await supabase
+        .from('wheel_spins')
+        .select('pending_bonus_percent')
+        .eq('telegram_id', String(telegram_id))
+        .maybeSingle();
+      wheelBonusPercent = Number(wheelRow?.pending_bonus_percent || 0);
+      if (wheelBonusPercent > 0) {
+        wheelBonusAmount = Math.floor(finalAmount * (wheelBonusPercent / 100));
+        totalAmount += wheelBonusAmount;
+        await supabase
+          .from('wheel_spins')
+          .update({ pending_bonus_percent: 0 })
+          .eq('telegram_id', String(telegram_id));
+      }
 
       // Get the approval message template
       const { data: settings } = await supabase.from('app_settings').select('value').eq('key', 'deposit_approved_message').single();
@@ -86,11 +111,14 @@ export default function DepositsPage() {
         .replace('{amount_syp}', amount_syp.toLocaleString())
         .replace('{final_amount}', finalAmount.toLocaleString())
         .replace('{wallet_name}', wallet_name || '')
-        .replace('{operation_number}', operation_number?.toString() || '');
+        .replace('{operation_number}', operation_number?.toString() || '')
+        .replace('{transfer_id}', transfer_tx_id || '—');
 
-      // Add bonus info if applicable
       if (bonusAmount > 0) {
-        message += `\n\n🎁 بونص إضافي: ${bonusAmount.toLocaleString()} ل.س (${bonusPercentage}%)`;
+        message += `\n\n🎁 بونص المحفظة: ${bonusAmount.toLocaleString()} ل.س (${bonusPercentage}%)`;
+      }
+      if (wheelBonusAmount > 0) {
+        message += `\n🎡 بونص العجلة: ${wheelBonusAmount.toLocaleString()} ل.س (${wheelBonusPercent}%)`;
       }
 
       // Update transaction status and bonus info
@@ -122,11 +150,10 @@ export default function DepositsPage() {
         message += `\n💰 المبلغ المضاف إلى الرصيد: ${finalAmount.toLocaleString()} ل.س`;
       }
 
-      // Add notification to queue
       await supabase.from('pending_notifications').insert({
-        telegram_id,
+        telegram_id: Number(telegram_id),
         message,
-        status: 'pending'
+        status: 'pending',
       });
 
       load();
@@ -139,7 +166,14 @@ export default function DepositsPage() {
     }
   };
 
-  const rejectDeposit = async (id: string, telegram_id: number, amount_syp: number, wallet_name: string, operation_number: number) => {
+  const rejectDeposit = async (
+    id: string,
+    telegram_id: number,
+    amount_syp: number,
+    wallet_name: string,
+    operation_number: number,
+    transfer_tx_id?: string,
+  ) => {
     if (!confirm(language === 'ar' ? 'رفض هذا الإيداع؟' : 'Reject this deposit?')) return;
     setProcessingId(id);
     try {
@@ -151,13 +185,13 @@ export default function DepositsPage() {
       message = message
         .replace('{amount_syp}', amount_syp.toLocaleString())
         .replace('{wallet_name}', wallet_name || '')
-        .replace('{operation_number}', operation_number?.toString() || '');
+        .replace('{operation_number}', operation_number?.toString() || '')
+        .replace('{transfer_id}', transfer_tx_id || '—');
 
-      // Add notification to queue
       await supabase.from('pending_notifications').insert({
-        telegram_id,
+        telegram_id: Number(telegram_id),
         message,
-        status: 'pending'
+        status: 'pending',
       });
 
       const { error } = await supabase.from('transactions').update({ status: 'rejected' }).eq('id', id);
@@ -227,7 +261,7 @@ export default function DepositsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className={`text-xs ${isDark ? 'bg-slate-900/50 text-slate-400' : 'bg-slate-50 text-slate-500'}`}>
-                {['#', t(language, 'username'), t(language, 'walletName'), t(language, 'amountSYP'), t(language, 'amountUSD'), t(language, 'exchangeRate'), t(language, 'status'), t(language, 'date'), t(language, 'actions')].map(h => (
+                {['#', t(language, 'transferTxId'), t(language, 'username'), t(language, 'walletName'), t(language, 'amountSYP'), t(language, 'amountUSD'), t(language, 'exchangeRate'), t(language, 'status'), t(language, 'date'), t(language, 'actions')].map(h => (
                   <th key={h} className="px-4 py-3 text-start font-medium whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -236,7 +270,7 @@ export default function DepositsPage() {
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (
                   <tr key={i}>
-                    {Array.from({ length: 8 }).map((_, j) => (
+                    {Array.from({ length: 9 }).map((_, j) => (
                       <td key={j} className="px-4 py-3">
                         <div className={`h-4 rounded animate-pulse ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`} style={{ width: `${40 + Math.random() * 40}%` }} />
                       </td>
@@ -244,10 +278,13 @@ export default function DepositsPage() {
                   </tr>
                 ))
               ) : txs.length === 0 ? (
-                <tr><td colSpan={8} className={`px-4 py-10 text-center text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{t(language, 'noData')}</td></tr>
+                <tr><td colSpan={9} className={`px-4 py-10 text-center text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{t(language, 'noData')}</td></tr>
               ) : txs.map(tx => (
                 <tr key={tx.id} className={`transition-colors ${isDark ? 'hover:bg-slate-700/20' : 'hover:bg-slate-50'}`}>
                   <td className={`px-4 py-3 font-mono text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{tx.operation_number}</td>
+                  <td className={`px-4 py-3 font-mono text-xs max-w-[140px] truncate ${isDark ? 'text-amber-300/90' : 'text-amber-700'}`} title={tx.wallet_address || ''}>
+                    {tx.wallet_address || '—'}
+                  </td>
                   <td className={`px-4 py-3 font-medium ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>@{tx.username || '—'}</td>
                   <td className={`px-4 py-3 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{tx.wallet_name || '—'}</td>
                   <td className="px-4 py-3 font-medium text-emerald-400">+{fmt(tx.amount_syp)}</td>
@@ -268,7 +305,7 @@ export default function DepositsPage() {
                     {tx.status === 'pending' && (
                       <div className="flex gap-1">
                         <button
-                          onClick={() => approveDeposit(tx.id, tx.telegram_id, tx.amount_syp, tx.wallet_name, tx.operation_number)}
+                          onClick={() => approveDeposit(tx.id, tx.telegram_id, tx.amount_syp, tx.wallet_name, tx.operation_number, tx.wallet_address)}
                           disabled={processingId === tx.id}
                           className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors disabled:opacity-50"
                           title={language === 'ar' ? 'موافقة' : 'Approve'}
@@ -276,7 +313,7 @@ export default function DepositsPage() {
                           {processingId === tx.id ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
                         </button>
                         <button
-                          onClick={() => rejectDeposit(tx.id, tx.telegram_id, tx.amount_syp, tx.wallet_name, tx.operation_number)}
+                          onClick={() => rejectDeposit(tx.id, tx.telegram_id, tx.amount_syp, tx.wallet_name, tx.operation_number, tx.wallet_address)}
                           disabled={processingId === tx.id}
                           className="p-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-50"
                           title={language === 'ar' ? 'رفض' : 'Reject'}

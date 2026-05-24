@@ -266,6 +266,7 @@ def main() -> None:
         import handlers.withdrawalAccount
         import handlers.withdrawal_conversation
         import handlers.admin_handler
+        import handlers.bot_status
 
         request = HTTPXRequest()
 
@@ -277,6 +278,19 @@ def main() -> None:
         # Set global notification application reference
         global notification_application
         notification_application = application
+
+        from handlers.broadcast_processor import set_bot
+        set_bot(application.bot)
+
+        # Bot pause from control panel (app_settings.bot_status)
+        application.add_handler(
+            CallbackQueryHandler(handlers.bot_status.bot_status_callback_guard),
+            group=-1,
+        )
+        application.add_handler(
+            MessageHandler(filters.ALL, handlers.bot_status.bot_status_message_guard),
+            group=-1,
+        )
 
         # 🔥 أضف أوامر البوت أولاً بأولوية عالية (group=0) لتجنب التعارض مع ConversationHandler
         application.add_handler(CommandHandler('start', handlers.command.start.start), group=0)

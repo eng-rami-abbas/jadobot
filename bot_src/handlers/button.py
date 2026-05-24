@@ -183,6 +183,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     elif data == 'back_to_menu':
         await handlers.backToMenu.handle_back_to_menu(query, username)
 
+    elif data == 'spin_wheel':
+        import handlers.wheel_handler
+        await handlers.wheel_handler.handle_spin_wheel(update, context)
+
     elif data == 'ichancy':
         await handlers.ichancy.handle_ichancy(update, context)
 
