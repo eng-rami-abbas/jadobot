@@ -4,8 +4,8 @@
 
 class SupabaseManager {
     constructor() {
-        this.supabaseUrl = 'https://your-project.supabase.co';
-        this.supabaseKey = 'your-anon-key';
+        this.supabaseUrl = 'https://kpnxtvargeajpxgswdso.supabase.co';
+        this.supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtwbnh0dmFyZ2VhanB4Z3N3ZHNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1MTM1NDgsImV4cCI6MjA5MjA4OTU0OH0.nLWI13zA_60KixjgE-ErieCuaSg3D756zRW_FqwOh-g';
         this.supabase = null;
         this.initialized = false;
         this.demoMode = true;
