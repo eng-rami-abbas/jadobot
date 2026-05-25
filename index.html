@@ -1,0 +1,1579 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="telegram-web-app" content="yes">
+    <meta name="theme-color" content="#0a0a0a">
+    <title>JADO BOT • Roulette Premium</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Playfair+Display:wght@700;800;900&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --gold: #c8963e;
+            --gold-bright: #e8c557;
+            --gold-light: #f5e6b8;
+            --gold-dark: #7a5518;
+            --red-section: #4a0a0a;
+            --purple-section: #1e0535;
+            --bg-deep: #060606;
+            --surface: #111;
+            --text-gold: #d4b87a;
+            --danger: #c0392b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Cairo', 'Playfair Display', serif;
+            background: #000;
+            overflow: hidden;
+            height: 100vh;
+            height: 100dvh;
+            width: 100vw;
+            width: 100dvw;
+            position: fixed;
+            top: 0;
+            left: 0;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Background */
+        #bgImage {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 0;
+            filter: blur(4px) brightness(0.35) saturate(0.7);
+            transform: scale(1.08);
+        }
+        #bgFallback {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            background: radial-gradient(ellipse at center, #1a1008 0%, #050505 70%);
+            display: none;
+        }
+
+        /* Light Rays */
+        .rays-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+            background:
+                radial-gradient(ellipse at 50% 35%, rgba(200, 150, 60, 0.2) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 45%, rgba(232, 197, 87, 0.1) 0%, transparent 40%),
+                radial-gradient(circle at 50% 40%, rgba(212, 168, 67, 0.25) 0%, transparent 25%);
+            animation: rayPulse 3.5s ease-in-out infinite;
+        }
+        @keyframes rayPulse {
+            0%,
+            100% {
+                opacity: 0.7;
+            }
+            50% {
+                opacity: 1;
+            }
+        }
+
+        /* Particle Canvas */
+        #particleCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* 3D Canvas */
+        #canvas3d {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            display: block;
+        }
+
+        /* Toast */
+        #toast {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            z-index: 30;
+            background: rgba(10, 8, 5, 0.96);
+            border: 2px solid var(--gold);
+            border-radius: 18px;
+            padding: 18px 28px;
+            color: var(--text-gold);
+            font-family: 'Cairo', sans-serif;
+            font-size: 17px;
+            font-weight: 700;
+            text-align: center;
+            pointer-events: none;
+            transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 0 50px rgba(200, 150, 60, 0.55), 0 0 100px rgba(200, 150, 60, 0.18);
+            max-width: 88vw;
+            line-height: 1.6;
+            white-space: pre-line;
+        }
+        #toast.show {
+            transform: translate(-50%, -50%) scale(1);
+        }
+        #toast.win {
+            border-color: #5cb85c;
+            box-shadow: 0 0 50px rgba(92, 184, 92, 0.6);
+            color: #a3d9a3;
+        }
+        #toast.lose {
+            border-color: #e09040;
+            box-shadow: 0 0 50px rgba(224, 144, 64, 0.55);
+            color: #f0c090;
+        }
+
+        /* Mute Button */
+        #btnMute {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            z-index: 25;
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: rgba(15, 12, 8, 0.85);
+            border: 1.5px solid var(--gold);
+            color: var(--gold-bright);
+            font-size: 19px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            -webkit-tap-highlight-color: transparent;
+        }
+        #btnMute:active {
+            transform: scale(0.88);
+            background: rgba(200, 150, 60, 0.25);
+        }
+
+        /* Info bar */
+        #infoBar {
+            position: fixed;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 20;
+            pointer-events: none;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .chip {
+            background: rgba(10, 8, 4, 0.8);
+            border: 1px solid rgba(200, 150, 60, 0.45);
+            border-radius: 20px;
+            padding: 7px 14px;
+            color: var(--text-gold);
+            font-family: 'Cairo', sans-serif;
+            font-size: 12px;
+            font-weight: 600;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            white-space: nowrap;
+            letter-spacing: 0.3px;
+        }
+
+        /* Footer logo */
+        #footerLogo {
+            position: fixed;
+            bottom: 18px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 15;
+            pointer-events: none;
+            color: var(--gold-bright);
+            font-family: 'Playfair Display', 'Cairo', serif;
+            font-size: 15px;
+            font-weight: 900;
+            letter-spacing: 4px;
+            text-shadow: 0 0 20px rgba(200, 150, 60, 0.7), 0 0 40px rgba(200, 150, 60, 0.3);
+            opacity: 0.85;
+        }
+
+        /* Loading overlay */
+        #loadingOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 100;
+            background: #060606;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.5s, visibility 0.5s;
+        }
+        #loadingOverlay.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+        .lds-ring {
+            display: inline-block;
+            width: 54px;
+            height: 54px;
+        }
+        .lds-ring div {
+            box-sizing: border-box;
+            display: block;
+            position: absolute;
+            width: 44px;
+            height: 44px;
+            margin: 5px;
+            border: 3px solid var(--gold);
+            border-radius: 50%;
+            animation: lds-ring 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+            border-color: var(--gold) transparent transparent transparent;
+        }
+        .lds-ring div:nth-child(1) {
+            animation-delay: -0.45s;
+        }
+        .lds-ring div:nth-child(2) {
+            animation-delay: -0.3s;
+        }
+        .lds-ring div:nth-child(3) {
+            animation-delay: -0.15s;
+        }
+        @keyframes lds-ring {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+        #loadingText {
+            color: var(--text-gold);
+            font-family: 'Cairo', sans-serif;
+            font-size: 15px;
+            margin-top: 14px;
+            letter-spacing: 2px;
+            font-weight: 600;
+        }
+
+        @media (max-width: 480px) {
+            #toast {
+                font-size: 14px;
+                padding: 14px 20px;
+                border-radius: 14px;
+            }
+            #btnMute {
+                width: 36px;
+                height: 36px;
+                font-size: 16px;
+                top: 10px;
+                right: 10px;
+            }
+            .chip {
+                font-size: 10px;
+                padding: 5px 10px;
+            }
+            #footerLogo {
+                font-size: 12px;
+                letter-spacing: 3px;
+                bottom: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Background Image -->
+    <img id="bgImage" src="assets/jado.png" alt=""
+    onerror="this.style.display='none';document.getElementById('bgFallback').style.display='block';">
+    <div id="bgFallback"></div>
+
+    <!-- Rays -->
+    <div class="rays-overlay"></div>
+
+    <!-- Particles -->
+    <canvas id="particleCanvas"></canvas>
+
+    <!-- Three.js Canvas -->
+    <canvas id="canvas3d"></canvas>
+
+    <!-- Toast -->
+    <div id="toast"></div>
+
+    <!-- Mute -->
+    <button id="btnMute" title="كتم / تشغيل الصوت">🔊</button>
+
+    <!-- Info -->
+    <div id="infoBar">
+        <div class="chip" id="chipUser">👤 جاري التحميل...</div>
+        <div class="chip" id="chipSpin">🎯 التدويرة اليومية</div>
+        <div class="chip" id="chipBalance">💰 --</div>
+    </div>
+
+    <!-- Footer -->
+    <div id="footerLogo">JADO BOT</div>
+
+    <!-- Loading -->
+    <div id="loadingOverlay">
+        <div class="lds-ring"><div></div><div></div><div></div><div></div></div>
+        <div id="loadingText">جاري تحميل الروليت الفاخر...</div>
+    </div>
+
+    <!-- CDN Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js">
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js">
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.4/howler.min.js">
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js">
+    </script>
+    <script src="https://telegram.org/js/telegram-web-app.js">
+    </script>
+
+    <script>
+        // ============================================================
+        // JADO BOT - ROULETTE PREMIUM
+        // Complete Telegram WebApp + Three.js + Supabase
+        // ============================================================
+
+        (function() {
+            // ──────────────────────────────────────────────
+            // CONFIGURATION - Replace with your Supabase creds
+            // ──────────────────────────────────────────────
+            const SUPABASE_URL = 'https://YOUR-PROJECT-ID.supabase.co';
+            const SUPABASE_ANON_KEY = 'YOUR-ANON-KEY';
+
+            // ──────────────────────────────────────────────
+            // DOM ELEMENTS
+            // ──────────────────────────────────────────────
+            const canvas3d = document.getElementById('canvas3d');
+            const particleCanvas = document.getElementById('particleCanvas');
+            const toastEl = document.getElementById('toast');
+            const btnMute = document.getElementById('btnMute');
+            const chipUser = document.getElementById('chipUser');
+            const chipSpin = document.getElementById('chipSpin');
+            const chipBalance = document.getElementById('chipBalance');
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            const loadingText = document.getElementById('loadingText');
+
+            // ──────────────────────────────────────────────
+            // STATE
+            // ──────────────────────────────────────────────
+            let telegramUser = null;
+            let userId = null;
+            let userBalance = 0;
+            let canSpin = false;
+            let isSpinning = false;
+            let supabaseClient = null;
+            let audioEnabled = true;
+            let spinResult = null;
+            let wheelTargetAngle = 0;
+            let ballTargetSection = -1;
+
+            // ──────────────────────────────────────────────
+            // AUDIO SYSTEM (Howler.js)
+            // ──────────────────────────────────────────────
+            const audioFiles = {
+                spin: 'audio/spin.mp3',
+                ball: 'audio/ball.mp3',
+                bounce: 'audio/bounce.mp3',
+                win: 'audio/win.mp3',
+                lose: 'audio/lose.mp3',
+                ambient: 'audio/ambient.mp3',
+            };
+
+            const sounds = {};
+            let ambientSound = null;
+
+            function initAudio() {
+                try {
+                    for (const [key, src] of Object.entries(audioFiles)) {
+                        sounds[key] = new Howl({
+                            src: [src],
+                            preload: true,
+                            volume: key === 'ambient' ? 0.25 : 0.7,
+                            onloaderror: () => { /* silent fail */ },
+                        });
+                    }
+                    ambientSound = sounds.ambient;
+                    if (ambientSound && audioEnabled) {
+                        ambientSound.play();
+                        ambientSound.loop(true);
+                    }
+                } catch (e) {
+                    console.warn('Audio init error:', e.message);
+                }
+            }
+
+            function playSound(name) {
+                if (!audioEnabled || !sounds[name]) return;
+                try {
+                    sounds[name].play();
+                } catch (e) { /* ignore */ }
+            }
+
+            function toggleMute() {
+                audioEnabled = !audioEnabled;
+                btnMute.textContent = audioEnabled ? '🔊' : '🔇';
+                if (ambientSound) {
+                    if (audioEnabled) {
+                        ambientSound.play();
+                        ambientSound.loop(true);
+                    } else {
+                        ambientSound.stop();
+                    }
+                }
+            }
+
+            btnMute.addEventListener('click', toggleMute);
+            btnMute.addEventListener('touchend', (e) => { e.preventDefault();
+                toggleMute(); });
+
+            // ──────────────────────────────────────────────
+            // TOAST SYSTEM
+            // ──────────────────────────────────────────────
+            let toastTimer = null;
+
+            function showToast(message, type = '') {
+                if (toastTimer) clearTimeout(toastTimer);
+                toastEl.className = '';
+                toastEl.textContent = message;
+                toastEl.classList.add('show');
+                if (type === 'win') toastEl.classList.add('win');
+                if (type === 'lose') toastEl.classList.add('lose');
+                toastTimer = setTimeout(() => {
+                    toastEl.classList.remove('show', 'win', 'lose');
+                }, 3500);
+            }
+
+            // ──────────────────────────────────────────────
+            // PARTICLES (Canvas 2D)
+            // ──────────────────────────────────────────────
+            const pCtx = particleCanvas.getContext('2d');
+            let particles = [];
+            const MAX_PARTICLES = 55;
+
+            function resizeParticleCanvas() {
+                particleCanvas.width = window.innerWidth;
+                particleCanvas.height = window.innerHeight;
+            }
+
+            function createParticle() {
+                return {
+                    x: Math.random() * particleCanvas.width,
+                    y: particleCanvas.height + 15,
+                    size: Math.random() * 2.5 + 0.8,
+                    speedY: -(Math.random() * 0.6 + 0.2),
+                    speedX: (Math.random() - 0.5) * 0.4,
+                    opacity: Math.random() * 0.7 + 0.3,
+                    life: 1,
+                    decay: Math.random() * 0.003 + 0.0015,
+                    hue: Math.random() < 0.7 ? 38 + Math.random() * 20 : 35 + Math.random() * 30,
+                };
+            }
+
+            function updateParticles() {
+                if (particles.length < MAX_PARTICLES && Math.random() < 0.35) {
+                    particles.push(createParticle());
+                }
+                pCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    const p = particles[i];
+                    p.y += p.speedY;
+                    p.x += p.speedX;
+                    p.life -= p.decay;
+                    if (p.life <= 0 || p.y < -20) {
+                        particles.splice(i, 1);
+                        continue;
+                    }
+                    pCtx.beginPath();
+                    pCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    pCtx.fillStyle = `hsla(${p.hue}, 70%, 60%, ${p.opacity * p.life})`;
+                    pCtx.fill();
+                    // Glow
+                    pCtx.beginPath();
+                    pCtx.arc(p.x, p.y, p.size * 2.5, 0, Math.PI * 2);
+                    pCtx.fillStyle = `hsla(${p.hue}, 70%, 55%, ${p.opacity * p.life * 0.2})`;
+                    pCtx.fill();
+                }
+            }
+
+            function particleLoop() {
+                updateParticles();
+                requestAnimationFrame(particleLoop);
+            }
+
+            resizeParticleCanvas();
+            window.addEventListener('resize', resizeParticleCanvas);
+            particleLoop();
+
+            // ──────────────────────────────────────────────
+            // THREE.JS SCENE
+            // ──────────────────────────────────────────────
+            const scene = new THREE.Scene();
+
+            const renderer = new THREE.WebGLRenderer({ canvas: canvas3d, antialias: true, alpha: true });
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.1;
+            renderer.outputEncoding = THREE.sRGBEncoding;
+
+            const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.5, 30);
+            // Initial camera: front view (wheel appears vertical)
+            camera.position.set(0, 0.8, 5.5);
+            camera.lookAt(0, 0, 0);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x332211, 0.7);
+            scene.add(ambientLight);
+
+            const keyLight = new THREE.DirectionalLight(0xffeedd, 1.6);
+            keyLight.position.set(3, 4, 5);
+            keyLight.castShadow = true;
+            keyLight.shadow.mapSize.width = 1024;
+            keyLight.shadow.mapSize.height = 1024;
+            keyLight.shadow.camera.near = 0.5;
+            keyLight.shadow.camera.far = 25;
+            keyLight.shadow.bias = -0.0001;
+            scene.add(keyLight);
+
+            const rimLight = new THREE.DirectionalLight(0xffcc88, 1.2);
+            rimLight.position.set(-2, 3, -3);
+            scene.add(rimLight);
+
+            const fillLight = new THREE.DirectionalLight(0x886644, 0.5);
+            fillLight.position.set(0, -1, 2);
+            scene.add(fillLight);
+
+            const goldPointLight = new THREE.PointLight(0xe8c557, 1.8, 8, 1.5);
+            goldPointLight.position.set(0, 0.3, 1.5);
+            scene.add(goldPointLight);
+
+            // ──────────────────────────────────────────────
+            // WHEEL GROUP
+            // ──────────────────────────────────────────────
+            const wheelGroup = new THREE.Group();
+            scene.add(wheelGroup);
+
+            // Wheel parameters
+            const WHEEL_OUTER_RADIUS = 2.4;
+            const WHEEL_INNER_RADIUS = 0.55;
+            const WHEEL_THICKNESS = 0.22;
+            const NUM_SECTIONS = 8;
+            const SECTION_ANGLE = (Math.PI * 2) / NUM_SECTIONS;
+
+            // Section labels in order (index 0 = section 1 at angle 0)
+            const sectionLabels = [
+                '10000', '20000', 'حظ أوفر', 'Telegram\nPremium',
+                '50000', 'Bonus 5%', 'حظ أوفر', 'إعادة تدوير'
+            ];
+
+            // Section colors (alternating)
+            const colorDarkRed = new THREE.Color('#4a0a0a');
+            const colorRoyalPurple = new THREE.Color('#1e0535');
+            const sectionColors = [];
+            for (let i = 0; i < NUM_SECTIONS; i++) {
+                sectionColors.push(i % 2 === 0 ? colorDarkRed : colorRoyalPurple);
+            }
+
+            // Create wheel base (dark cylinder)
+            const baseCylinderGeo = new THREE.CylinderGeometry(WHEEL_OUTER_RADIUS, WHEEL_OUTER_RADIUS, WHEEL_THICKNESS,
+                64);
+            const baseMaterial = new THREE.MeshStandardMaterial({
+                color: 0x1a1a1a,
+                roughness: 0.5,
+                metalness: 0.3,
+            });
+            const baseCylinder = new THREE.Mesh(baseCylinderGeo, baseMaterial);
+            baseCylinder.position.y = -WHEEL_THICKNESS / 2;
+            baseCylinder.receiveShadow = true;
+            baseCylinder.castShadow = true;
+            wheelGroup.add(baseCylinder);
+
+            // Create wedge sections on top
+            const wedgeGroup = new THREE.Group();
+            wedgeGroup.position.y = 0.01;
+            wheelGroup.add(wedgeGroup);
+
+            function createWedgeShape(innerR, outerR, angle) {
+                const shape = new THREE.Shape();
+                const segments = 24;
+                const angleStep = angle / segments;
+                // Start at inner radius
+                shape.moveTo(innerR, 0);
+                // Arc to outer radius
+                for (let i = 0; i <= segments; i++) {
+                    const a = i * angleStep;
+                    const r = innerR + (outerR - innerR) * (i / segments);
+                    shape.lineTo(r * Math.cos(a), r * Math.sin(a));
+                }
+                // Arc back along outer edge
+                for (let i = segments; i >= 0; i--) {
+                    const a = i * angleStep;
+                    shape.lineTo(outerR * Math.cos(a), outerR * Math.sin(a));
+                }
+                shape.closePath();
+                return shape;
+            }
+
+            for (let i = 0; i < NUM_SECTIONS; i++) {
+                const wedgeShape = createWedgeShape(WHEEL_INNER_RADIUS, WHEEL_OUTER_RADIUS, SECTION_ANGLE);
+                const wedgeGeo = new THREE.ShapeGeometry(wedgeShape);
+                const wedgeMat = new THREE.MeshStandardMaterial({
+                    color: sectionColors[i],
+                    roughness: 0.35,
+                    metalness: 0.15,
+                    side: THREE.DoubleSide,
+                });
+                const wedgeMesh = new THREE.Mesh(wedgeGeo, wedgeMat);
+                wedgeMesh.rotation.z = i * SECTION_ANGLE;
+                wedgeMesh.position.y = 0.005;
+                wedgeMesh.receiveShadow = true;
+                wedgeGroup.add(wedgeMesh);
+
+                // Gold divider line at each section boundary
+                const dividerGeo = new THREE.BoxGeometry(0.04, 0.015, WHEEL_OUTER_RADIUS - WHEEL_INNER_RADIUS);
+                const dividerMat = new THREE.MeshStandardMaterial({
+                    color: 0xd4a843,
+                    roughness: 0.2,
+                    metalness: 0.9,
+                    emissive: 0x332200,
+                    emissiveIntensity: 0.4,
+                });
+                const divider = new THREE.Mesh(dividerGeo, dividerMat);
+                divider.position.y = 0.015;
+                divider.rotation.z = i * SECTION_ANGLE;
+                divider.position.x = (WHEEL_INNER_RADIUS + WHEEL_OUTER_RADIUS) / 2 * Math.cos(i * SECTION_ANGLE);
+                divider.position.z = -(WHEEL_INNER_RADIUS + WHEEL_OUTER_RADIUS) / 2 * Math.sin(i * SECTION_ANGLE);
+                divider.rotation.z = i * SECTION_ANGLE;
+                wedgeGroup.add(divider);
+            }
+
+            // Gold outer rim
+            const rimGeo = new THREE.TorusGeometry(WHEEL_OUTER_RADIUS, 0.1, 32, 80);
+            const rimMat = new THREE.MeshStandardMaterial({
+                color: 0xd4a843,
+                roughness: 0.15,
+                metalness: 0.95,
+                emissive: 0x221100,
+                emissiveIntensity: 0.3,
+            });
+            const rim = new THREE.Mesh(rimGeo, rimMat);
+            rim.rotation.x = Math.PI / 2;
+            rim.position.y = 0.02;
+            rim.castShadow = true;
+            wheelGroup.add(rim);
+
+            // Inner gold ring
+            const innerRimGeo = new THREE.TorusGeometry(WHEEL_INNER_RADIUS, 0.06, 24, 48);
+            const innerRim = new THREE.Mesh(innerRimGeo, rimMat.clone());
+            innerRim.rotation.x = Math.PI / 2;
+            innerRim.position.y = 0.03;
+            wheelGroup.add(innerRim);
+
+            // LED ring (small glowing dots)
+            const ledGroup = new THREE.Group();
+            ledGroup.position.y = 0.06;
+            wheelGroup.add(ledGroup);
+            const NUM_LEDS = 64;
+            for (let i = 0; i < NUM_LEDS; i++) {
+                const angle = (i / NUM_LEDS) * Math.PI * 2;
+                const ledGeo = new THREE.SphereGeometry(0.025, 8, 8);
+                const ledMat = new THREE.MeshStandardMaterial({
+                    color: 0xffd700,
+                    roughness: 0.1,
+                    metalness: 0.3,
+                    emissive: 0xffaa00,
+                    emissiveIntensity: 1.5,
+                });
+                const led = new THREE.Mesh(ledGeo, ledMat);
+                led.position.set(
+                    (WHEEL_OUTER_RADIUS - 0.15) * Math.cos(angle),
+                    0,
+                    -(WHEEL_OUTER_RADIUS - 0.15) * Math.sin(angle)
+                );
+                led.userData = { baseEmissive: 1.5, phase: Math.random() * Math.PI * 2 };
+                ledGroup.add(led);
+            }
+
+            // Central hub (SPIN button area)
+            const hubGroup = new THREE.Group();
+            hubGroup.position.y = 0.08;
+            wheelGroup.add(hubGroup);
+
+            const hubOuterGeo = new THREE.CylinderGeometry(0.5, 0.52, 0.1, 48);
+            const hubOuterMat = new THREE.MeshStandardMaterial({
+                color: 0x111111,
+                roughness: 0.2,
+                metalness: 0.9,
+            });
+            const hubOuter = new THREE.Mesh(hubOuterGeo, hubOuterMat);
+            hubOuter.position.y = 0;
+            hubGroup.add(hubOuter);
+
+            const hubTopGeo = new THREE.CylinderGeometry(0.48, 0.5, 0.04, 48);
+            const hubTopMat = new THREE.MeshStandardMaterial({
+                color: 0xd4a843,
+                roughness: 0.1,
+                metalness: 0.95,
+                emissive: 0x332200,
+                emissiveIntensity: 0.5,
+            });
+            const hubTop = new THREE.Mesh(hubTopGeo, hubTopMat);
+            hubTop.position.y = 0.07;
+            hubTop.name = 'hubTop';
+            hubGroup.add(hubTop);
+
+            // SPIN text sprite
+            const spinLabelCanvas = document.createElement('canvas');
+            spinLabelCanvas.width = 256;
+            spinLabelCanvas.height = 128;
+            const sctx = spinLabelCanvas.getContext('2d');
+            sctx.fillStyle = '#e8c557';
+            sctx.font = 'bold 52px Cairo, serif';
+            sctx.textAlign = 'center';
+            sctx.textBaseline = 'middle';
+            sctx.fillText('SPIN', 128, 60);
+            const spinTexture = new THREE.CanvasTexture(spinLabelCanvas);
+            spinTexture.minFilter = THREE.LinearFilter;
+            const spinSpriteMat = new THREE.SpriteMaterial({ map: spinTexture, transparent: true, depthTest: false,
+                depthWrite: false });
+            const spinSprite = new THREE.Sprite(spinSpriteMat);
+            spinSprite.scale.set(0.9, 0.45, 1);
+            spinSprite.position.y = 0.16;
+            spinSprite.name = 'spinSprite';
+            hubGroup.add(spinSprite);
+
+            // Ball (initially hidden at center, will morph from SPIN button)
+            const ballGeo = new THREE.SphereGeometry(0.14, 32, 32);
+            const ballMat = new THREE.MeshStandardMaterial({
+                color: 0xeeeeee,
+                roughness: 0.08,
+                metalness: 0.95,
+                emissive: 0x111111,
+                emissiveIntensity: 0.2,
+            });
+            const ball = new THREE.Mesh(ballGeo, ballMat);
+            ball.position.set(0, 0.25, 0);
+            ball.visible = false;
+            ball.name = 'ball';
+            ball.castShadow = true;
+            wheelGroup.add(ball);
+
+            // Pointer/marker (fixed indicator showing winning section)
+            const pointerGeo = new THREE.ConeGeometry(0.12, 0.35, 8, 16);
+            const pointerMat = new THREE.MeshStandardMaterial({
+                color: 0xffd700,
+                roughness: 0.1,
+                metalness: 0.9,
+                emissive: 0xff8800,
+                emissiveIntensity: 1.2,
+            });
+            const pointer = new THREE.Mesh(pointerGeo, pointerMat);
+            pointer.position.set(0, 0.35, -(WHEEL_OUTER_RADIUS - 0.3));
+            pointer.rotation.x = 0;
+            pointer.name = 'pointer';
+            wheelGroup.add(pointer);
+
+            // Section label sprites (placed on each wedge)
+            const labelSprites = [];
+            for (let i = 0; i < NUM_SECTIONS; i++) {
+                const midAngle = i * SECTION_ANGLE + SECTION_ANGLE / 2;
+                const labelR = (WHEEL_INNER_RADIUS + WHEEL_OUTER_RADIUS) / 2;
+                const lCanvas = document.createElement('canvas');
+                lCanvas.width = 256;
+                lCanvas.height = 128;
+                const lctx = lCanvas.getContext('2d');
+                lctx.fillStyle = '#f5e6b8';
+                lctx.font = 'bold 26px Cairo, serif';
+                lctx.textAlign = 'center';
+                lctx.textBaseline = 'middle';
+                const lines = sectionLabels[i].split('\n');
+                if (lines.length === 2) {
+                    lctx.fillText(lines[0], 128, 40);
+                    lctx.fillText(lines[1], 128, 80);
+                } else {
+                    lctx.fillText(sectionLabels[i], 128, 60);
+                }
+                const lTexture = new THREE.CanvasTexture(lCanvas);
+                lTexture.minFilter = THREE.LinearFilter;
+                const lSpriteMat = new THREE.SpriteMaterial({ map: lTexture, transparent: true, depthTest: false,
+                    depthWrite: false });
+                const lSprite = new THREE.Sprite(lSpriteMat);
+                lSprite.scale.set(1.2, 0.6, 1);
+                lSprite.position.set(
+                    labelR * Math.cos(midAngle),
+                    0.06,
+                    -labelR * Math.sin(midAngle)
+                );
+                lSprite.userData = { sectionIndex: i };
+                wedgeGroup.add(lSprite);
+                labelSprites.push(lSprite);
+            }
+
+            // ──────────────────────────────────────────────
+            // CAMERA & ANIMATION STATE
+            // ──────────────────────────────────────────────
+            const cameraState = {
+                posX: 0,
+                posY: 0.8,
+                posZ: 5.5,
+                lookY: 0,
+                isHorizontal: false,
+            };
+
+            function updateCameraPosition() {
+                camera.position.set(cameraState.posX, cameraState.posY, cameraState.posZ);
+                camera.lookAt(0, cameraState.lookY, 0);
+            }
+
+            // ──────────────────────────────────────────────
+            // WHEEL ROTATION STATE
+            // ──────────────────────────────────────────────
+            let wheelRotationSpeed = 0;
+            let wheelCurrentAngle = 0;
+            let ballOrbitAngle = 0;
+            let ballOrbitSpeed = 0;
+            let ballOrbitRadius = WHEEL_OUTER_RADIUS - 0.25;
+            let ballYOffset = 0.25;
+            let ballIsOnWheel = false;
+            let physicsActive = false;
+
+            function getWheelRotation() {
+                return wheelGroup.rotation.y;
+            }
+
+            function setWheelRotation(angle) {
+                wheelGroup.rotation.y = angle;
+                wheelCurrentAngle = angle;
+            }
+
+            // ──────────────────────────────────────────────
+            // RENDER LOOP
+            // ──────────────────────────────────────────────
+            const clock = new THREE.Clock();
+
+            function animate() {
+                requestAnimationFrame(animate);
+
+                const dt = Math.min(clock.getDelta(), 0.1);
+                const time = performance.now() * 0.001;
+
+                // LED animation
+                ledGroup.children.forEach((led) => {
+                    const intensity = led.userData.baseEmissive + Math.sin(time * 4 + led.userData.phase) * 0.8;
+                    led.material.emissiveIntensity = Math.max(0.6, intensity);
+                });
+
+                // Gold point light subtle flicker
+                goldPointLight.intensity = 1.8 + Math.sin(time * 3.7) * 0.25 + Math.sin(time * 7.3) * 0.15;
+
+                // Physics update
+                if (physicsActive) {
+                    // Wheel rotation
+                    wheelCurrentAngle += wheelRotationSpeed * dt;
+                    wheelGroup.rotation.y = wheelCurrentAngle;
+
+                    // Ball orbit (counter-rotation)
+                    if (ballIsOnWheel) {
+                        ballOrbitAngle += ballOrbitSpeed * dt;
+                        ball.position.x = ballOrbitRadius * Math.cos(ballOrbitAngle);
+                        ball.position.z = -ballOrbitRadius * Math.sin(ballOrbitAngle);
+                        ball.position.y = ballYOffset;
+
+                        // Ball bobbing
+                        if (ballOrbitSpeed < 1.5 && ballOrbitSpeed > 0.15) {
+                            ball.position.y += Math.sin(time * 18) * 0.04;
+                        }
+                        if (ballOrbitSpeed < 0.15 && ballOrbitSpeed > 0.01) {
+                            ball.position.y += Math.sin(time * 25) * 0.06;
+                        }
+                    }
+                }
+
+                // Pointer glow pulse
+                if (pointer.material.emissiveIntensity !== undefined) {
+                    pointer.material.emissiveIntensity = 1.2 + Math.sin(time * 3) * 0.5;
+                }
+
+                renderer.render(scene, camera);
+            }
+
+            // ──────────────────────────────────────────────
+            // CINEMATIC SPIN SEQUENCE
+            // ──────────────────────────────────────────────
+            async function startSpinSequence() {
+                if (isSpinning) return;
+                if (!canSpin) {
+                    showToast('⚠️ يجب القيام بإيداع أولاً للحصول على تدويرة مجانية.\nاو لقد استخدمت تدويرتك اليومية.', 'lose');
+                    return;
+                }
+
+                isSpinning = true;
+                spinResult = null;
+                ballTargetSection = -1;
+
+                // 1. Call backend to determine prize
+                loadingText.textContent = 'جاري تحديد الجائزة...';
+                loadingOverlay.classList.remove('hidden');
+
+                let serverResult;
+                try {
+                    serverResult = await determinePrizeFromServer();
+                } catch (err) {
+                    console.error('Server error:', err);
+                    loadingOverlay.classList.add('hidden');
+                    showToast('⚠️ خطأ في الاتصال بالسيرفر. حاول مجدداً.', 'lose');
+                    isSpinning = false;
+                    return;
+                }
+
+                loadingOverlay.classList.add('hidden');
+
+                if (!serverResult || !serverResult.success) {
+                    const errMsg = serverResult?.error || 'غير مؤهل للتدوير حالياً.';
+                    showToast('⚠️ ' + errMsg, 'lose');
+                    isSpinning = false;
+                    return;
+                }
+
+                spinResult = serverResult;
+                ballTargetSection = getSectionIndexForPrize(spinResult.prize);
+                if (ballTargetSection < 0) ballTargetSection = Math.floor(Math.random() * NUM_SECTIONS);
+
+                // Calculate target wheel angle so pointer aligns with winning section
+                const sectionMidAngle = ballTargetSection * SECTION_ANGLE + SECTION_ANGLE / 2;
+                // We want the pointer (at angle -π/2 in world, which is "south" on the wheel)
+                // to point at the winning section.
+                // Pointer world position relative to wheel: at angle -π/2 (pointing toward -Z)
+                // Winning section mid angle on wheel: sectionMidAngle
+                // We need wheel rotation such that sectionMidAngle aligns with pointer direction
+                const pointerWorldAngle = -Math.PI / 2; // pointer is at -Z in wheel's local space
+                const targetWheelAngle = pointerWorldAngle - sectionMidAngle;
+                // Add multiple full rotations for dramatic effect
+                const extraRotations = (4 + Math.floor(Math.random() * 4)) * Math.PI * 2;
+                wheelTargetAngle = targetWheelAngle + extraRotations;
+                // Ensure wheelTargetAngle is "ahead" of current angle
+                while (wheelTargetAngle < wheelCurrentAngle + Math.PI * 2) {
+                    wheelTargetAngle += Math.PI * 2;
+                }
+
+                // 2. Cinematic sequence
+                playSound('spin');
+                await cinematicTransition();
+
+                // 3. Start physics-based spin
+                playSound('ball');
+                startPhysicsSpin();
+
+                // 4. Wait for physics to complete
+                await waitForPhysicsComplete();
+
+                // 5. Show result
+                isSpinning = false;
+                physicsActive = false;
+                ballIsOnWheel = false;
+                ball.visible = false;
+                hubTop.visible = true;
+                spinSprite.visible = true;
+                hubGroup.visible = true;
+
+                displayResult(spinResult);
+                updateUIAfterSpin();
+            }
+
+            function getSectionIndexForPrize(prize) {
+                const normalizedPrize = prize.trim();
+                for (let i = 0; i < sectionLabels.length; i++) {
+                    const labelNormalized = sectionLabels[i].replace('\n', ' ').trim();
+                    if (labelNormalized === normalizedPrize ||
+                        (normalizedPrize === 'حظ أوفر' && labelNormalized.includes('حظ أوفر')) ||
+                        (normalizedPrize === 'Telegram Premium' && labelNormalized.includes('Telegram')) ||
+                        (normalizedPrize === 'Bonus 5%' && labelNormalized.includes('Bonus 5%')) ||
+                        (normalizedPrize === 'إعادة تدوير' && labelNormalized.includes('إعادة تدوير')) ||
+                        (normalizedPrize === '10000' && labelNormalized === '10000') ||
+                        (normalizedPrize === '20000' && labelNormalized === '20000') ||
+                        (normalizedPrize === '50000' && labelNormalized === '50000')) {
+                        return i;
+                    }
+                }
+                // Fallback: find any section matching loosely
+                for (let i = 0; i < sectionLabels.length; i++) {
+                    if (sectionLabels[i].includes(normalizedPrize) || normalizedPrize.includes(sectionLabels[i].replace(
+                            '\n', ' ').trim())) {
+                        return i;
+                    }
+                }
+                return -1;
+            }
+
+            async function cinematicTransition() {
+                // Phase 1: Shake
+                const origY = cameraState.posY;
+                const origZ = cameraState.posZ;
+                await gsap.to(cameraState, {
+                    posY: origY + 0.12,
+                    duration: 0.08,
+                    yoyo: true,
+                    repeat: 3,
+                    onUpdate: updateCameraPosition,
+                }).then();
+
+                // Phase 2: Golden flash (brief light boost)
+                goldPointLight.intensity = 6;
+                await gsap.to(goldPointLight, { intensity: 1.8, duration: 0.5 });
+
+                // Phase 3: Camera zoom + tilt to horizontal
+                // Hide SPIN elements, show ball
+                hubTop.visible = false;
+                spinSprite.visible = false;
+                ball.visible = true;
+                ball.position.set(0, 0.25, 0);
+                ball.scale.set(0.3, 0.3, 0.3);
+
+                await gsap.to(ball.scale, { x: 1, y: 1, z: 1, duration: 0.5, ease: 'back.out(2)' }).then();
+
+                // Camera tilts to horizontal (top-down view)
+                await gsap.to(cameraState, {
+                    posY: 4.5,
+                    posZ: 1.2,
+                    lookY: -0.5,
+                    duration: 1.2,
+                    ease: 'power2.inOut',
+                    onUpdate: updateCameraPosition,
+                }).then();
+
+                cameraState.isHorizontal = true;
+
+                // Move ball to outer edge
+                ballOrbitRadius = WHEEL_OUTER_RADIUS - 0.25;
+                ballOrbitAngle = Math.random() * Math.PI * 2;
+                ballYOffset = 0.08;
+                ballIsOnWheel = true;
+                ball.position.set(
+                    ballOrbitRadius * Math.cos(ballOrbitAngle),
+                    ballYOffset,
+                    -ballOrbitRadius * Math.sin(ballOrbitAngle)
+                );
+                ball.visible = true;
+                hubGroup.visible = false;
+            }
+
+            function startPhysicsSpin() {
+                physicsActive = true;
+                ballIsOnWheel = true;
+                // Wheel spins clockwise (negative in our coordinate system)
+                wheelRotationSpeed = -8.5; // rad/s
+                // Ball spins counter-clockwise
+                ballOrbitSpeed = 12.0; // rad/s (faster, opposite direction)
+
+                // Calculate total time for spin based on target angle
+                const totalWheelAngle = wheelTargetAngle - wheelCurrentAngle;
+                const estimatedDuration = totalWheelAngle / Math.abs(wheelRotationSpeed);
+                // We'll use a deceleration curve
+                const targetTime = estimatedDuration * 0.85;
+
+                // Animate wheel deceleration
+                gsap.to(window, {
+                    duration: targetTime,
+                    onUpdate: () => {
+                        if (!physicsActive) return;
+                        // Gradually slow wheel
+                        const progress = gsap.getProperty(window, '_spinProgress') || 0;
+                    },
+                });
+
+                // Use a custom approach: gradually reduce speeds
+                const startTime = performance.now();
+                const totalSpinDuration = 6.5 + Math.random() * 2.5; // 6.5-9 seconds
+
+                function physicsTick() {
+                    if (!physicsActive) return;
+                    const elapsed = (performance.now() - startTime) / 1000;
+                    const progress = Math.min(elapsed / totalSpinDuration, 1);
+
+                    // Decelerate wheel
+                    const wheelDecel = easeOutCubic(progress);
+                    wheelRotationSpeed = -8.5 * (1 - wheelDecel) + (-0.02) * wheelDecel;
+
+                    // Decelerate ball (slower deceleration at first, then faster)
+                    const ballDecel = easeOutQuad(progress);
+                    ballOrbitSpeed = 12.0 * (1 - ballDecel) + 0.0 * ballDecel;
+
+                    // Bounce effects near the end
+                    if (progress > 0.7 && ballOrbitSpeed < 2.5) {
+                        const bounceFactor = (progress - 0.7) / 0.3;
+                        if (Math.random() < bounceFactor * 0.3) {
+                            playSound('bounce');
+                            ballYOffset = 0.08 + Math.random() * 0.06;
+                        }
+                    }
+
+                    // Final settling
+                    if (progress > 0.92) {
+                        ballOrbitSpeed *= 0.85;
+                        ballYOffset += (0.04 - ballYOffset) * 0.3;
+                        // Snap ball toward winning section
+                        const targetBallAngle = ballTargetSection * SECTION_ANGLE + SECTION_ANGLE / 2;
+                        const angleDiff = targetBallAngle - ballOrbitAngle;
+                        const normalizedDiff = ((angleDiff + Math.PI) % (Math.PI * 2)) - Math.PI;
+                        ballOrbitAngle += normalizedDiff * 0.15;
+                    }
+
+                    if (progress >= 1) {
+                        // Finalize
+                        physicsActive = false;
+                        ballIsOnWheel = false;
+                        const finalBallAngle = ballTargetSection * SECTION_ANGLE + SECTION_ANGLE / 2;
+                        ballOrbitAngle = finalBallAngle;
+                        ball.position.x = ballOrbitRadius * Math.cos(finalBallAngle);
+                        ball.position.z = -ballOrbitRadius * Math.sin(finalBallAngle);
+                        ball.position.y = 0.04;
+                        ball.visible = true;
+                        // Align wheel
+                        const finalWheelAngle = wheelTargetAngle % (Math.PI * 2);
+                        setWheelRotation(finalWheelAngle);
+                    }
+
+                    if (physicsActive) {
+                        requestAnimationFrame(() => physicsTick());
+                    }
+                }
+
+                requestAnimationFrame(() => physicsTick());
+            }
+
+            function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+            function easeOutQuad(t) { return 1 - (1 - t) * (1 - t); }
+
+            function waitForPhysicsComplete() {
+                return new Promise((resolve) => {
+                    const check = () => {
+                        if (!physicsActive) {
+                            resolve();
+                        } else {
+                            requestAnimationFrame(check);
+                        }
+                    };
+                    check();
+                });
+            }
+
+            function displayResult(result) {
+                const prize = result.prize;
+                let message = '';
+                let type = '';
+
+                if (prize === '10000' || prize === '20000' || prize === '50000') {
+                    message = `🎉 مبروك!\nلقد ربحت ${prize}`;
+                    type = 'win';
+                    playSound('win');
+                } else if (prize === 'Telegram Premium') {
+                    message = '🎉 مبروك!\nلقد ربحت Telegram Premium\nسيتم تفعيله قريباً.';
+                    type = 'win';
+                    playSound('win');
+                } else if (prize === 'Bonus 5%') {
+                    message = '🎉 مبروك!\nلقد ربحت Bonus 5%\nسيتم تطبيقه على أول إيداع قادم.';
+                    type = 'win';
+                    playSound('win');
+                } else if (prize === 'إعادة تدوير') {
+                    message = '🎉 مبروك!\nحصلت على إعادة تدوير مجانية.';
+                    type = 'win';
+                    playSound('win');
+                } else if (prize === 'حظ أوفر') {
+                    message = '😔 حظ أوفر\nنتمنى لك حظاً أفضل غداً.';
+                    type = 'lose';
+                    playSound('lose');
+                } else {
+                    message = `النتيجة: ${prize}`;
+                    type = 'win';
+                    playSound('win');
+                }
+
+                showToast(message, type);
+
+                // Send via Telegram if available
+                if (window.Telegram && window.Telegram.WebApp) {
+                    try {
+                        Telegram.WebApp.showPopup({
+                            title: 'نتيجة الروليت',
+                            message: message.replace(/\n/g, ' '),
+                            buttons: [{ type: 'ok' }],
+                        });
+                        Telegram.WebApp.sendData(JSON.stringify({ action: 'spin_result', result: result }));
+                    } catch (e) { /* ignore */ }
+                }
+            }
+
+            // ──────────────────────────────────────────────
+            // SUPABASE INTEGRATION
+            // ──────────────────────────────────────────────
+            function initSupabase() {
+                if (!SUPABASE_URL.includes('https://kpnxtvargeajpxgswdso.supabase.co') && !SUPABASE_ANON_KEY.includes('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtwbnh0dmFyZ2VhanB4Z3N3ZHNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1MTM1NDgsImV4cCI6MjA5MjA4OTU0OH0.nLWI13zA_60KixjgE-ErieCuaSg3D756zRW_FqwOh-g')) {
+                    supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    return true;
+                }
+                console.warn('⚠️ Supabase not configured. Running in demo mode.');
+                return false;
+            }
+
+            async function determinePrizeFromServer() {
+                if (!supabaseClient) {
+                    // Demo mode: simulate server response
+                    return simulateServerSpin();
+                }
+
+                // Call Supabase RPC function
+                const { data, error } = await supabaseClient.rpc('perform_spin', {
+                    p_user_id: userId,
+                });
+
+                if (error) {
+                    console.error('RPC error:', error);
+                    // Fallback: try direct check + insert with server-side random
+                    return await fallbackServerSpin();
+                }
+
+                return data;
+            }
+
+            async function fallbackServerSpin() {
+                // Check eligibility via direct queries
+                const { data: deposits } = await supabaseClient
+                    .from('deposits')
+                    .select('id')
+                    .eq('user_id', userId)
+                    .limit(1);
+
+                if (!deposits || deposits.length === 0) {
+                    return { success: false, error: 'يجب القيام بإيداع أولاً للحصول على تدويرة مجانية.' };
+                }
+
+                const today = new Date().toISOString().split('T')[0];
+                const { data: todaySpins } = await supabaseClient
+                    .from('spins')
+                    .select('id')
+                    .eq('user_id', userId)
+                    .eq('spin_date', today)
+                    .limit(1);
+
+                const { data: freeSpins } = await supabaseClient
+                    .from('free_spins')
+                    .select('remaining')
+                    .eq('user_id', userId)
+                    .maybeSingle();
+
+                const freeRemaining = freeSpins?.remaining || 0;
+
+                if (todaySpins && todaySpins.length > 0 && freeRemaining <= 0) {
+                    return { success: false, error: 'لقد استخدمت تدويرتك المجانية لهذا اليوم.' };
+                }
+
+                // Use a server-side random via Supabase function call
+                const { data: randomVal } = await supabaseClient.rpc('get_random');
+                const rand = randomVal || Math.random();
+
+                const prize = determinePrizeFromRandom(rand);
+                const amount = ['10000', '20000', '50000'].includes(prize) ? parseInt(prize) : 0;
+
+                // Record spin
+                if (todaySpins && todaySpins.length > 0 && freeRemaining > 0) {
+                    await supabaseClient.from('free_spins').update({ remaining: freeRemaining - 1 }).eq('user_id', userId);
+                } else {
+                    await supabaseClient.from('spins').insert({ user_id: userId, spin_date: today });
+                }
+
+                // Record result
+                await supabaseClient.from('spin_results').insert({ user_id: userId, prize: prize });
+
+                // Handle rewards
+                if (amount > 0) {
+                    await supabaseClient.rpc('add_balance', { p_user_id: userId, p_amount: amount });
+                } else if (prize === 'Bonus 5%') {
+                    await supabaseClient.from('bonus_rewards').insert({ user_id: userId, bonus_percent: 5, used: false });
+                } else if (prize === 'Telegram Premium') {
+                    await supabaseClient.from('premium_rewards').insert({ user_id: userId, status: 'pending' });
+                } else if (prize === 'إعادة تدوير') {
+                    await supabaseClient.from('free_spins').upsert({ user_id: userId, remaining: freeRemaining + 1 });
+                }
+
+                return {
+                    success: true,
+                    prize: prize,
+                    amount: amount,
+                    balance: null,
+                };
+            }
+
+            function determinePrizeFromRandom(rand) {
+                if (rand < 0.25) return '10000';
+                if (rand < 0.40) return '20000';
+                if (rand < 0.55) return 'حظ أوفر';
+                if (rand < 0.60) return 'Telegram Premium';
+                if (rand < 0.65) return '50000';
+                if (rand < 0.75) return 'Bonus 5%';
+                if (rand < 0.90) return 'حظ أوفر';
+                return 'إعادة تدوير';
+            }
+
+            function simulateServerSpin() {
+                // Demo mode for testing without Supabase
+                const prizes = ['10000', '20000', 'حظ أوفر', 'Telegram Premium', '50000', 'Bonus 5%', 'حظ أوفر',
+                    'إعادة تدوير'
+                ];
+                const prize = prizes[Math.floor(Math.random() * prizes.length)];
+                const amount = ['10000', '20000', '50000'].includes(prize) ? parseInt(prize) : 0;
+                return Promise.resolve({
+                    success: true,
+                    prize: prize,
+                    amount: amount,
+                    balance: null,
+                });
+            }
+
+            async function checkEligibility() {
+                if (!supabaseClient || !userId) {
+                    canSpin = true; // Demo mode
+                    updateSpinChip();
+                    return;
+                }
+
+                try {
+                    const { data, error } = await supabaseClient.rpc('check_spin_eligibility', {
+                        p_user_id: userId,
+                    });
+
+                    if (error) {
+                        console.error('Eligibility check error:', error);
+                        canSpin = false;
+                    } else {
+                        canSpin = data?.can_spin || false;
+                    }
+                } catch (e) {
+                    console.error('Eligibility error:', e);
+                    canSpin = false;
+                }
+
+                updateSpinChip();
+            }
+
+            function updateSpinChip() {
+                if (canSpin) {
+                    chipSpin.textContent = '✅ التدويرة متاحة';
+                    chipSpin.style.color = '#a3d9a3';
+                } else {
+                    chipSpin.textContent = '❌ التدويرة مستخدمة';
+                    chipSpin.style.color = '#e09090';
+                }
+            }
+
+            async function updateUIAfterSpin() {
+                await checkEligibility();
+                if (supabaseClient && userId) {
+                    try {
+                        const { data } = await supabaseClient
+                            .from('users')
+                            .select('balance')
+                            .eq('telegram_id', userId)
+                            .maybeSingle();
+                        if (data) {
+                            userBalance = data.balance || 0;
+                            chipBalance.textContent = `💰 ${userBalance.toLocaleString()}`;
+                        }
+                    } catch (e) { /* ignore */ }
+                }
+            }
+
+            // ──────────────────────────────────────────────
+            // TELEGRAM INTEGRATION
+            // ──────────────────────────────────────────────
+            function initTelegram() {
+                if (window.Telegram && window.Telegram.WebApp) {
+                    const tg = window.Telegram.WebApp;
+                    tg.ready();
+                    tg.expand();
+
+                    const initData = tg.initDataUnsafe;
+                    if (initData && initData.user) {
+                        telegramUser = initData.user;
+                        userId = telegramUser.id;
+                        chipUser.textContent = `👤 ${telegramUser.first_name || 'User'}`;
+                        if (telegramUser.username) {
+                            chipUser.textContent += ` (@${telegramUser.username})`;
+                        }
+                    } else {
+                        // Demo fallback
+                        userId = 123456789;
+                        telegramUser = { id: userId, first_name: 'Demo User', username: 'demo' };
+                        chipUser.textContent = '👤 Demo User';
+                    }
+
+                    // Set theme
+                    if (tg.colorScheme === 'dark') {
+                        document.body.classList.add('dark-mode');
+                    }
+                } else {
+                    // Not in Telegram, use demo mode
+                    userId = 987654321;
+                    telegramUser = { id: userId, first_name: 'Guest', username: 'guest' };
+                    chipUser.textContent = '👤 Guest Mode';
+                    console.warn('Not running inside Telegram WebApp. Demo mode active.');
+                }
+
+                if (userId) {
+                    chipBalance.textContent = `💰 --`;
+                }
+            }
+
+            // ──────────────────────────────────────────────
+            // SPIN BUTTON (Click on wheel center)
+            // ──────────────────────────────────────────────
+            const raycaster = new THREE.Raycaster();
+            const mouse = new THREE.Vector2();
+
+            function onCanvasClick(event) {
+                if (isSpinning) return;
+
+                // Get click/touch position
+                const rect = canvas3d.getBoundingClientRect();
+                const x = ((event.clientX || (event.touches && event.touches[0].clientX) || 0) - rect.left) / rect
+                    .width * 2 - 1;
+                const y = -((event.clientY || (event.touches && event.touches[0].clientY) || 0) - rect.top) / rect
+                    .height * 2 + 1;
+
+                mouse.set(x, y);
+                raycaster.setFromCamera(mouse, camera);
+
+                // Check if we hit the hub/button area
+                const intersects = raycaster.intersectObjects([hubOuter, hubTop, spinSprite], true);
+                if (intersects.length > 0) {
+                    startSpinSequence();
+                }
+            }
+
+            canvas3d.addEventListener('click', onCanvasClick);
+            canvas3d.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                onCanvasClick(e);
+            });
+
+            // ──────────────────────────────────────────────
+            // RESIZE HANDLER
+            // ──────────────────────────────────────────────
+            function onResize() {
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                resizeParticleCanvas();
+            }
+            window.addEventListener('resize', onResize);
+            window.addEventListener('orientationchange', () => setTimeout(onResize, 200));
+
+            // ──────────────────────────────────────────────
+            // INITIALIZATION
+            // ──────────────────────────────────────────────
+            async function init() {
+                initTelegram();
+                const supabaseReady = initSupabase();
+                initAudio();
+
+                if (supabaseReady && userId) {
+                    await checkEligibility();
+                    try {
+                        const { data } = await supabaseClient
+                            .from('users')
+                            .select('balance')
+                            .eq('telegram_id', userId)
+                            .maybeSingle();
+                        if (data) {
+                            userBalance = data.balance || 0;
+                            chipBalance.textContent = `💰 ${userBalance.toLocaleString()}`;
+                        }
+                    } catch (e) { /* ignore */ }
+                } else {
+                    canSpin = true;
+                    updateSpinChip();
+                    chipBalance.textContent = '💰 وضع تجريبي';
+                }
+
+                updateCameraPosition();
+                updateSpinChip();
+
+                // Hide loading
+                setTimeout(() => {
+                    loadingOverlay.classList.add('hidden');
+                }, 600);
+
+                // Start render loop
+                animate();
+            }
+
+            // ──────────────────────────────────────────────
+            // START
+            // ──────────────────────────────────────────────
+            init().catch((err) => {
+                console.error('Init error:', err);
+                loadingText.textContent = 'خطأ في التحميل. حاول تحديث الصفحة.';
+                setTimeout(() => {
+                    loadingOverlay.classList.add('hidden');
+                }, 1500);
+                animate();
+            });
+
+            console.log('%c🎰 JADO BOT Roulette Premium %cReady',
+                'color: #e8c557; font-size: 18px; font-weight: bold;',
+                'color: #aaa;');
+            console.log('%cSupabase: %c' + (SUPABASE_URL.includes('YOUR-PROJECT-ID') ? 'Demo Mode' : 'Connected'),
+                'color: #888;', 'color: #5cb85c;');
+            console.log('%cTelegram: %c' + (window.Telegram?.WebApp ? 'WebApp Active' : 'Standalone/Demo'),
+                'color: #888;', 'color: #5cb85c;');
+            console.log('%cGitHub Pages Ready • 60FPS Target • Three.js + GSAP + Howler.js',
+                'color: #d4a843; font-size: 11px;');
+
+        })();
+    </script>
+</body>
+</html>
