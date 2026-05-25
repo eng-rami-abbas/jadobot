@@ -14,7 +14,7 @@ logger = Logger.getLogger()
 # إعدادات العجلة
 WHEEL_WEBAPP_URL = os.getenv(
     'WHEEL_WEBAPP_URL',
-    'https://eng-rami-abbas.github.io/jadobot/wheel_project/',
+    'https://eng-rami-abbas.github.io/jadobot/',
 ).rstrip('/')
 
 
