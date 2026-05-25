@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>JADO BOT - Premium Roulette</title>
+
+    <!-- Preload critical resources -->
+    <link rel="preload" href="style.css" as="style">
+    <link rel="preload" href="assets/jado.png" as="image">
+
+    <link rel="stylesheet" href="style.css">
+
+    <!-- CDN Libraries with fallbacks -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js" 
+        onerror="window.cdnFallback = true;"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"
+        onerror="window.gsapLoaded = false;"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"
+        onerror="window.threeLoaded = false;"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.4/howler.min.js"
+        onerror="window.howlerLoaded = false;"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"
+        onerror="window.telegramLoaded = false;"></script>
+
+    <style>
+        /* Critical inline styles for instant display */
+        body { margin: 0; background: #0A0A0A; overflow: hidden; }
+        #loading-overlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: #0A0A0A; z-index: 9999; display: flex; 
+            flex-direction: column; align-items: center; justify-content: center;
+            color: #FFD700; font-family: Arial, sans-serif;
+        }
+        .loading-spinner {
+            width: 50px; height: 50px; border: 3px solid #333;
+            border-top-color: #FFD700; border-radius: 50%;
+            animation: spin 1s linear infinite; margin-bottom: 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        #error-display { display: none; color: #ff4444; text-align: center; padding: 20px; }
+    </style>
+</head>
+<body>
+    <div id="loading-overlay">
+        <div class="loading-spinner"></div>
+        <span>جاري تحميل JADO BOT...</span>
+        <div id="error-display"></div>
+    </div>
+
+    <div id="app" style="display:none;">
+        <!-- Background Layer -->
+        <div id="bg-layer">
+            <img id="bg-image" src="assets/jado.png" alt="JADO Background" 
+                onerror="this.style.display='none'">
+            <div id="bg-blur"></div>
+            <div id="bg-glow"></div>
+            <div id="bg-rays"></div>
+            <div id="bg-particles"></div>
+            <div id="bg-depth"></div>
+        </div>
+
+        <!-- Three.js Container -->
+        <div id="three-container"></div>
+
+        <!-- Canvas Fallback -->
+        <canvas id="wheel-canvas" style="display:none;"></canvas>
+
+        <!-- UI Overlay -->
+        <div id="ui-overlay">
+            <!-- Top Bar -->
+            <div id="top-bar">
+                <div id="user-info">
+                    <div id="user-avatar">J</div>
+                    <div id="user-details">
+                        <span id="user-name">JADO User</span>
+                        <span id="user-balance">💰 0</span>
+                    </div>
+                </div>
+                <div id="spin-counter">
+                    <span id="spins-remaining">🎰 تدويرات: 1</span>
+                </div>
+            </div>
+
+            <!-- Center Area -->
+            <div id="center-area">
+                <div id="wheel-wrapper">
+                    <!-- 2D Canvas Wheel (fallback) -->
+                    <canvas id="wheel-2d"></canvas>
+
+                    <!-- 3D Wheel Container -->
+                    <div id="wheel-3d-container"></div>
+
+                    <!-- Spin Button -->
+                    <div id="spin-btn-container">
+                        <button id="spin-btn" class="spin-btn">
+                            <span class="spin-text">SPIN</span>
+                            <div class="spin-shine"></div>
+                        </button>
+                    </div>
+
+                    <!-- Ball -->
+                    <div id="ball-container" style="display:none;">
+                        <div id="roulette-ball"></div>
+                    </div>
+
+                    <!-- Pointer/Indicator -->
+                    <div id="wheel-pointer">
+                        <div class="pointer-triangle"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Area -->
+            <div id="bottom-area">
+                <div id="jado-branding">
+                    <div class="crown-icon">👑</div>
+                    <h1 class="jado-title">JADO BOT</h1>
+                    <div class="diamond-icon">💎</div>
+                </div>
+                <div id="message-area">
+                    <div id="message-box" class="hidden">
+                        <span id="message-text"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sound Toggle -->
+            <button id="sound-toggle" class="sound-btn">
+                <span id="sound-icon">🔊</span>
+                <span id="sound-text">الصوت</span>
+            </button>
+        </div>
+
+        <!-- Modals -->
+        <div id="deposit-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-icon">💳</div>
+                <h2>إيداع مطلوب</h2>
+                <p>يجب القيام بإيداع أولاً للحصول على تدويرة مجانية.</p>
+                <button id="deposit-btn" class="modal-btn">إيداع الآن</button>
+            </div>
+        </div>
+
+        <div id="win-modal" class="modal hidden">
+            <div class="modal-content win-content">
+                <div class="win-particles"></div>
+                <div class="modal-icon" id="win-icon">🎉</div>
+                <h2 id="win-title">مبروك!</h2>
+                <p id="win-message"></p>
+                <button id="win-close" class="modal-btn">حسناً</button>
+            </div>
+        </div>
+
+        <!-- Error Modal -->
+        <div id="error-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-icon">⚠️</div>
+                <h2>تنبيه</h2>
+                <p id="error-message"></p>
+                <button id="error-close" class="modal-btn">حسناً</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts loaded in order with error handling -->
+    <script>
+        // Global error handler
+        window.onerror = function(msg, url, line, col, error) {
+            console.error('Global error:', msg, 'at', url, line, col);
+            showLoadingError(msg);
+            return false;
+        };
+
+        function showLoadingError(msg) {
+            const errorDiv = document.getElementById('error-display');
+            if (errorDiv) {
+                errorDiv.style.display = 'block';
+                errorDiv.innerHTML = '<br>خطأ: ' + msg + '<br><br>يرجى تحديث الصفحة';
+            }
+        }
+
+        // Check library loading
+        window.libsReady = function() {
+            return typeof THREE !== 'undefined' && 
+                   typeof gsap !== 'undefined' && 
+                   typeof Howl !== 'undefined';
+        };
+    </script>
+
+    <script src="js/audio.js"></script>
+    <script src="js/supabase.js"></script>
+    <script src="js/telegram.js"></script>
+    <script src="js/physics.js"></script>
+    <script src="js/wheel.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
