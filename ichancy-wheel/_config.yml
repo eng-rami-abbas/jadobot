@@ -1,0 +1,13 @@
+# JADO BOT - GitHub Pages Config
+# This file ensures all folders are included even with Jekyll
+
+include:
+  - js
+  - audio
+  - assets
+  - supabase
+
+exclude:
+  - README.md
+  - .gitignore
+  - supabase/functions
