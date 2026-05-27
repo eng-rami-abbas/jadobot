@@ -8,7 +8,12 @@ from datetime import datetime, timedelta
 import json
 import os
 from collections import defaultdict
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
+
 from config.telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.error import TelegramError
@@ -166,6 +171,8 @@ class AnalyticsSystem:
     
     def generate_chart(self, data_type: str = "daily_users"):
         """إنشاء مخطط بياني"""
+        if not MATPLOTLIB_AVAILABLE:
+            return None
         try:
             fig, ax = plt.subplots(figsize=(10, 6))
             
@@ -203,22 +210,17 @@ class AnalyticsSystem:
             logger.error(f"Error generating chart: {e}")
             return None
 
-# إنشاء كائن التحليلات العالمي
 analytics_system = AnalyticsSystem()
 
 class AdminHandler:
     """فئة معالج صلاحيات الإدمن"""
     
-    # حالة البوت (True = نشط، False = متوقف للصيانة)
     BOT_STATUS = True
     MAINTENANCE_MESSAGE = "🔧 البوت في حالة صيانة مؤقتة. نعتذر للإزعاج وسنعود قريباً!"
-    
-    # قائمة IDs الفائزين بالجاكبوت
     JACKPOT_WINNERS = []
     
     @staticmethod
     def is_admin(user_id: str) -> bool:
-        """التحقق من صلاحية الإدمن"""
         try:
             admin_id = int(config.telegram.ADMIN_TELEGRAM_ID)
             return str(user_id) == str(admin_id)
@@ -227,7 +229,6 @@ class AdminHandler:
     
     @staticmethod
     def user_management_menu():
-        """قائمة إدارة المستخدمين للإدمن"""
         keyboard = [
             [
                 InlineKeyboardButton("💰 إضافة رصيد", callback_data="admin_add_balance"),
@@ -249,7 +250,6 @@ class AdminHandler:
     
     @staticmethod
     def pending_transactions_menu():
-        """قائمة المعاملات المعلقة للإدمن"""
         keyboard = [
             [
                 InlineKeyboardButton("✅ الموافقة على معاملة", callback_data="admin_approve_transaction"),
@@ -266,15 +266,11 @@ class AdminHandler:
     
     @staticmethod
     def admin_back_menu():
-        """زر العودة للوحة الإدمن"""
-        keyboard = [
-            [InlineKeyboardButton("🔙 العودة للوحة الإدمن", callback_data="admin_panel")]
-        ]
+        keyboard = [[InlineKeyboardButton("🔙 العودة للوحة الإدمن", callback_data="admin_panel")]]
         return InlineKeyboardMarkup(keyboard)
     
     @staticmethod
     def cancel_admin_operation():
-        """زر إلغاء عملية الإدمن"""
         keyboard = [
             [
                 InlineKeyboardButton("❌ إلغاء العملية", callback_data="cancel_admin_operation"),
@@ -285,7 +281,6 @@ class AdminHandler:
     
     @staticmethod
     def analytics_menu():
-        """قائمة التحليلات والإحصاءات"""
         keyboard = [
             [
                 InlineKeyboardButton("📊 إحصائيات المستخدمين", callback_data="admin_analytics_users"),
@@ -311,7 +306,6 @@ class AdminHandler:
     
     @staticmethod
     def admin_panel_menu():
-        """لوحة تحكم الإدمن الرئيسية"""
         keyboard = [
             [
                 InlineKeyboardButton("👥 إدارة المستخدمين", callback_data="admin_users"),
@@ -339,17 +333,14 @@ class AdminHandler:
         ]
         return InlineKeyboardMarkup(keyboard)
     
+    # ---------- شاشات الإدمن ----------
     @staticmethod
     async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """لوحة تحكم الإدمن الرئيسية – ترسل رسالة جديدة لتجنب أخطاء التعديل"""
         user_id = str(update.effective_user.id)
-        
-        # صلاحية الدخول
         if not AdminHandler.is_admin(user_id):
             await update.callback_query.answer("❌ ليس لديك صلاحية الوصول إلى لوحة الإدمن", show_alert=True)
             return
         
-        # جلب إحصائيات سريعة
         try:
             today_stats = analytics_system.get_daily_stats()
             total_users = len(analytics_system.data.get("users", {}))
@@ -377,25 +368,37 @@ class AdminHandler:
 🔧 **لوحة تحكم الإدمن**
 
 مرحباً بك في لوحة تحكم الإدمن.
-🤖 حالة البوت: {"🟢 نشط" if AdminHandler.BOT_STATUS else "🔴 
-البوت في حالة صيانة لفترة قصيرة بسبب الصيانة العامة ضمن الموقع ... يرجى الانتظار و عدم مراسلة الدعم 
-شاكرين صبركم "}
+🤖 حالة البوت: {"🟢 نشط" if AdminHandler.BOT_STATUS else "🔴 متوقف للصيانة"}
 
 اختر العملية المطلوبة من القائمة:
             """
         
-        # ✅ إرسال رسالة جديدة بدلاً من تعديل القديمة
+        # إرسال رسالة جديدة بدلاً من تعديل القديمة
         await update.callback_query.message.reply_text(
             stats_text,
             reply_markup=AdminHandler.admin_panel_menu(),
             parse_mode='Markdown'
         )
     
-    # ... باقي الدوال بدون تغيير ...
-    keyboard = [
+    @staticmethod
+    async def admin_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        keyboard = [
+            [InlineKeyboardButton("🤖 إدارة حالة البوت", callback_data="admin_manage_bot_status")],
+            [InlineKeyboardButton("🔙 العودة للوحة الإدمن", callback_data="admin_panel")]
+        ]
+        await update.callback_query.edit_message_text(
+            "⚙️ **إعدادات النظام**\n\nاختر الإعداد الذي تريد تعديله:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    
+    @staticmethod
+    async def manage_bot_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        current_status = "🟢 نشط" if AdminHandler.BOT_STATUS else "🔴 متوقف للصيانة"
+        keyboard = [
             [
                 InlineKeyboardButton("🟢 تشغيل البوت", callback_data="admin_bot_start"),
-                InlineKeyboardButton("🔴 إوقف البوت", callback_data="admin_bot_stop")
+                InlineKeyboardButton("🔴 إيقاف البوت", callback_data="admin_bot_stop")
             ],
             [
                 InlineKeyboardButton("📣 إرسال إشعار للمستخدمين", callback_data="admin_send_maintenance_notice")
@@ -404,7 +407,6 @@ class AdminHandler:
                 InlineKeyboardButton("🔙 رجوع للإعدادات", callback_data="admin_settings")
             ]
         ]
-        
         await update.callback_query.edit_message_text(
             f"🤖 **إدارة حالة البوت**\n\nالحالة الحالية: {current_status}\n\nاختر العملية:",
             reply_markup=InlineKeyboardMarkup(keyboard),
@@ -413,14 +415,11 @@ class AdminHandler:
     
     @staticmethod
     async def start_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """تشغيل البوت"""
         if AdminHandler.BOT_STATUS:
             await update.callback_query.answer("✅ البوت يعمل بالفعل", show_alert=True)
             return
-        
         AdminHandler.BOT_STATUS = True
         logger.info(f"البوت تم تشغيله بواسطة الإدمن {update.effective_user.id}")
-        
         try:
             await AdminHandler._send_broadcast_message(
                 context,
@@ -428,20 +427,16 @@ class AdminHandler:
             )
         except Exception as e:
             logger.error(f"Error sending broadcast: {e}")
-        
         await update.callback_query.answer("✅ تم تشغيل البوت بنجاح", show_alert=True)
         await AdminHandler.manage_bot_status(update, context)
     
     @staticmethod
     async def stop_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """إيقاف البوت للصيانة"""
         if not AdminHandler.BOT_STATUS:
             await update.callback_query.answer("✅ البوت متوقف بالفعل للصيانة", show_alert=True)
             return
-        
         AdminHandler.BOT_STATUS = False
         logger.info(f"البوت تم إيقافه للصيانة بواسطة الإدمن {update.effective_user.id}")
-        
         try:
             await AdminHandler._send_broadcast_message(
                 context,
@@ -449,34 +444,19 @@ class AdminHandler:
             )
         except Exception as e:
             logger.error(f"Error sending broadcast: {e}")
-        
         await update.callback_query.answer("✅ تم إيقاف البوت للصيانة بنجاح", show_alert=True)
         await AdminHandler.manage_bot_status(update, context)
     
     @staticmethod
     async def send_maintenance_notice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """إرسال إشعار صيانة للمستخدمين"""
-        message = """
-📣 **إرسال إشعار صيانة**
-
-أرسل رسالة الصيانة التي تريد إرسالها للمستخدمين:
-(يمكنك استخدام التنسيق Markdown)
-        """
-        
+        message = "📣 **إرسال إشعار صيانة**\n\nأرسل رسالة الصيانة التي تريد إرسالها للمستخدمين:\n(يمكنك استخدام التنسيق Markdown)"
         context.user_data['admin_operation'] = 'maintenance_notice'
-        
-        keyboard = [
-            [InlineKeyboardButton("❌ إلغاء", callback_data='admin_manage_bot_status')]
-        ]
-        
-        await update.callback_query.edit_message_text(
-            message,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data='admin_manage_bot_status')]]
+        await update.callback_query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
     
+    # ---------- إدارة الجاكبوت ----------
     @staticmethod
     async def jackpot_management(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """إدارة الجاكبوت"""
         keyboard = [
             [
                 InlineKeyboardButton("➕ إضافة ID فائز", callback_data="admin_add_jackpot_id"),
@@ -490,149 +470,81 @@ class AdminHandler:
                 InlineKeyboardButton("🔙 العودة للوحة الإدمن", callback_data="admin_panel")
             ]
         ]
-        
         winners_count = len(AdminHandler.JACKPOT_WINNERS)
-        
         await update.callback_query.edit_message_text(
-            f"🎰 **إدارة الجاكبوت**\n\n"
-            f"📊 **عدد IDs الفائزين:** {winners_count}\n\n"
-            f"اختر العملية المطلوبة:",
+            f"🎰 **إدارة الجاكبوت**\n\n📊 **عدد IDs الفائزين:** {winners_count}\n\nاختر العملية المطلوبة:",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
         )
     
     @staticmethod
     async def add_jackpot_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """إضافة ID فائز جديد"""
-        message = """
-➕ **إضافة ID فائز جديد**
-
-📝 **أرسل ID الفائز:**
-
-مثال:7939712752
-
-@algado13
-
-User ID: 7939712752
-
-
-💡 **يمكنك إرسال أي نص تريده، سيتم حفظه كما هو!**
-        """
-        
+        message = "➕ **إضافة ID فائز جديد**\n\n📝 **أرسل ID الفائز:**"
         context.user_data['admin_operation'] = 'add_jackpot_id'
-        
-        keyboard = [
-            [InlineKeyboardButton("❌ إلغاء", callback_data='admin_jackpot')]
-        ]
-        
-        await update.callback_query.edit_message_text(
-            message,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
+        keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data='admin_jackpot')]]
+        await update.callback_query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     
     @staticmethod
     async def view_jackpot_ids(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """عرض IDs الفائزين"""
         if not AdminHandler.JACKPOT_WINNERS:
             message = "📋 **لا يوجد IDs فائزين مسجلة بعد**"
         else:
             message = "🏆 **IDs الفائزين بالجاكبوت:**\n\n"
             for i, winner_id in enumerate(AdminHandler.JACKPOT_WINNERS, 1):
                 message += f"{i}️⃣ {winner_id}\n"
-        
         keyboard = [
-            [
-                InlineKeyboardButton("➕ إضافة ID", callback_data="admin_add_jackpot_id"),
-                InlineKeyboardButton("🗑️ حذف ID", callback_data="admin_delete_jackpot_id")
-            ],
-            [
-                InlineKeyboardButton("🔄 مسح الكل", callback_data="admin_clear_jackpot_ids"),
-                InlineKeyboardButton("🔄 تحديث القائمة", callback_data="admin_view_jackpot_ids")
-            ],
-            [
-                InlineKeyboardButton("🔙 رجوع", callback_data="admin_jackpot")
-            ]
+            [InlineKeyboardButton("➕ إضافة ID", callback_data="admin_add_jackpot_id"),
+             InlineKeyboardButton("🗑️ حذف ID", callback_data="admin_delete_jackpot_id")],
+            [InlineKeyboardButton("🔄 مسح الكل", callback_data="admin_clear_jackpot_ids"),
+             InlineKeyboardButton("🔄 تحديث القائمة", callback_data="admin_view_jackpot_ids")],
+            [InlineKeyboardButton("🔙 رجوع", callback_data="admin_jackpot")]
         ]
-        
-        await update.callback_query.edit_message_text(
-            message,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
+        await update.callback_query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     
     @staticmethod
     async def delete_jackpot_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """حذف ID فائز"""
         if not AdminHandler.JACKPOT_WINNERS:
             await update.callback_query.answer("❌ لا يوجد IDs لحذفها", show_alert=True)
             await AdminHandler.jackpot_management(update, context)
             return
-        
-        message = "🗑️ **حذف ID فائز**\n\n"
-        message += "أرسل **رقم الـ ID** الذي تريد حذفه:\n\n"
-        
-        message += "📋 **IDs الحالية:**\n"
+        message = "🗑️ **حذف ID فائز**\n\nأرسل **رقم الـ ID** الذي تريد حذفه:\n\n"
         for i, winner_id in enumerate(AdminHandler.JACKPOT_WINNERS, 1):
             message += f"{i}️⃣ {winner_id}\n"
-        
         context.user_data['admin_operation'] = 'delete_jackpot_id'
-        
-        keyboard = [
-            [InlineKeyboardButton("❌ إلغاء", callback_data='admin_jackpot')]
-        ]
-        
-        await update.callback_query.edit_message_text(
-            message,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
+        keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data='admin_jackpot')]]
+        await update.callback_query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     
     @staticmethod
     async def clear_jackpot_ids(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """مسح جميع IDs الفائزين"""
         keyboard = [
-            [
-                InlineKeyboardButton("✅ نعم، مسح الكل", callback_data="admin_confirm_clear_ids"),
-                InlineKeyboardButton("❌ لا، إلغاء", callback_data="admin_jackpot")
-            ]
+            [InlineKeyboardButton("✅ نعم، مسح الكل", callback_data="admin_confirm_clear_ids"),
+             InlineKeyboardButton("❌ لا، إلغاء", callback_data="admin_jackpot")]
         ]
-        
         await update.callback_query.edit_message_text(
-            "⚠️ **هل أنت متأكد من مسح جميع IDs الفائزين؟**\n\n"
-            "هذه العملية لا يمكن التراجع عنها!",
+            "⚠️ **هل أنت متأكد من مسح جميع IDs الفائزين؟**\n\nهذه العملية لا يمكن التراجع عنها!",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
         )
     
     @staticmethod
     async def confirm_clear_ids(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """تأكيد مسح جميع IDs"""
         AdminHandler.JACKPOT_WINNERS = []
         await update.callback_query.answer("✅ تم مسح جميع IDs الفائزين", show_alert=True)
         await AdminHandler.jackpot_management(update, context)
     
+    # ---------- إدارة المستخدمين والمعاملات ----------
     @staticmethod
     async def user_management(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """إدارة المستخدمين"""
-        message = """
-👥 **إدارة المستخدمين**
-
-اختر العملية المطلوبة:
-        """
-        
         await update.callback_query.edit_message_text(
-            message,
+            "👥 **إدارة المستخدمين**\n\nاختر العملية المطلوبة:",
             reply_markup=AdminHandler.user_management_menu(),
             parse_mode='Markdown'
         )
     
     @staticmethod
-    async def pending_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """المعاملات المعلقة"""
+    async def view_pending_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             pending = store.get_pending_transactions()
-            
             if not pending:
                 message = "✅ **لا توجد معاملات معلقة حالياً**"
             else:
@@ -640,11 +552,9 @@ User ID: 7939712752
                 for i, transaction in enumerate(pending[:10], 1):
                     user = store.getUserById(transaction['user_id'])
                     username = user[2] if user else "غير معروف"
-                    
                     message += f"{i}. **#{transaction['id']}** - {username}\n"
                     message += f"   💰 {transaction.get('value', 0)} - {transaction.get('action_type', 'غير محدد')}\n"
                     message += f"   📅 {transaction.get('created_at', 'غير معروف')}\n\n"
-            
             await update.callback_query.edit_message_text(
                 message,
                 reply_markup=AdminHandler.pending_transactions_menu(),
@@ -660,28 +570,22 @@ User ID: 7939712752
     
     @staticmethod
     async def analytics_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """لوحة التحليلات والإحصاءات"""
         try:
             today_stats = analytics_system.get_daily_stats()
             total_users = len(analytics_system.data["users"])
             top_users = analytics_system.get_top_users(5)
             top_commands = analytics_system.get_most_used_commands(5)
             
-            # بناء الرسالة
             message = "📊 **لوحة التحليلات والإحصاءات**\n\n"
-            
             message += f"📅 **إحصائيات اليوم ({datetime.now().strftime('%Y-%m-%d')}):**\n"
             message += f"• 👥 المستخدمون النشطون: {today_stats['active_users']}\n"
             message += f"• 🆕 مستخدمون جدد: {today_stats['new_users']}\n"
             message += f"• 📈 إجمالي العمليات: {today_stats['total_actions']}\n\n"
-            
             message += f"📋 **إجمالي المستخدمين:** {total_users}\n\n"
-            
             message += "👑 **أفضل 5 مستخدمين حسب النشاط:**\n"
             for i, user in enumerate(top_users, 1):
                 username_display = f"@{user['username']}" if user['username'] != 'Unknown' else "مستخدم"
                 message += f"{i}. {username_display} - {user['total_actions']} عملية\n"
-            
             message += "\n📈 **أكثر 5 أوامر استخداماً:**\n"
             for i, cmd in enumerate(top_commands, 1):
                 message += f"{i}. `{cmd['command']}` - {cmd['count']} استخدام\n"
@@ -701,11 +605,9 @@ User ID: 7939712752
     
     @staticmethod
     async def show_analytics_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """عرض إحصائيات المستخدمين"""
         try:
             total_users = len(analytics_system.data["users"])
             today_stats = analytics_system.get_daily_stats()
-            
             message = "👥 **إحصائيات المستخدمين**\n\n"
             message += f"📊 **إحصائيات عامة:**\n"
             message += f"• 👥 إجمالي المستخدمين: {total_users}\n"
@@ -713,13 +615,11 @@ User ID: 7939712752
             message += f"• 🆕 مستخدمون جدد اليوم: {today_stats['new_users']}\n"
             message += f"• 📈 إجمالي العمليات اليوم: {today_stats['total_actions']}\n"
             message += f"• 📊 متوسط النشاط/مستخدم: {today_stats['total_actions'] / max(1, today_stats['active_users']):.1f}\n\n"
-            
             message += "📅 **نشاط آخر 7 أيام:**\n"
             for i in range(7):
                 date = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
                 stats = analytics_system.get_daily_stats(date)
                 message += f"• {date}: {stats['active_users']} نشيط، {stats['new_users']} جديد\n"
-            
             await update.callback_query.edit_message_text(
                 message,
                 reply_markup=AdminHandler.analytics_menu(),
@@ -735,17 +635,14 @@ User ID: 7939712752
     
     @staticmethod
     async def show_analytics_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """عرض أكثر الأوامر استخداماً"""
         try:
             top_commands = analytics_system.get_most_used_commands(15)
-            
             message = "📈 **أكثر الأوامر استخداماً**\n\n"
             for i, cmd in enumerate(top_commands, 1):
                 message += f"{i}. `{cmd['command']}`\n"
                 message += f"   • عدد الاستخدامات: {cmd['count']}\n"
                 message += f"   • عدد المستخدمين: {cmd['unique_users']}\n"
                 message += f"   • متوسط الاستخدام/مستخدم: {cmd['count'] / max(1, cmd['unique_users']):.1f}\n\n"
-            
             await update.callback_query.edit_message_text(
                 message,
                 reply_markup=AdminHandler.analytics_menu(),
@@ -761,17 +658,14 @@ User ID: 7939712752
     
     @staticmethod
     async def show_analytics_top_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """عرض أفضل المستخدمين"""
         try:
             top_users = analytics_system.get_top_users(15)
-            
             message = "👑 **أفضل المستخدمين حسب النشاط**\n\n"
             for i, user in enumerate(top_users, 1):
                 username_display = f"@{user['username']}" if user['username'] != 'Unknown' else f"مستخدم {user['user_id']}"
                 message += f"{i}. {username_display}\n"
                 message += f"   • إجمالي العمليات: {user['total_actions']}\n"
                 message += f"   • آخر ظهور: {user['last_seen']}\n\n"
-            
             await update.callback_query.edit_message_text(
                 message,
                 reply_markup=AdminHandler.analytics_menu(),
@@ -787,26 +681,20 @@ User ID: 7939712752
     
     @staticmethod
     async def show_analytics_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """عرض إحصائيات اليوم التفصيلية"""
         try:
             today = datetime.now().strftime("%Y-%m-%d")
             today_stats = analytics_system.get_daily_stats(today)
-            
             message = f"📅 **إحصائيات اليوم ({today})**\n\n"
             message += f"📊 **النشاط اليومي:**\n"
             message += f"• 👥 المستخدمون النشطون: {today_stats['active_users']}\n"
             message += f"• 🆕 مستخدمون جدد: {today_stats['new_users']}\n"
             message += f"• 📈 إجمالي العمليات: {today_stats['total_actions']}\n"
             message += f"• 📊 متوسط العمليات/مستخدم: {today_stats['total_actions'] / max(1, today_stats['active_users']):.1f}\n\n"
-            
-            # إحصائيات الساعات
             message += "⏰ **توزيع النشاط (تقريبي):**\n"
-            
             current_hour = datetime.now().hour
             for hour in range(24):
                 if hour <= current_hour:
                     message += f"• {hour:02d}:00 - تقدير: {int(today_stats['total_actions'] * 0.05)}\n"
-            
             await update.callback_query.edit_message_text(
                 message,
                 reply_markup=AdminHandler.analytics_menu(),
@@ -822,17 +710,14 @@ User ID: 7939712752
     
     @staticmethod
     async def send_analytics_chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """إرسال مخطط التحليلات"""
         try:
             chart_path = analytics_system.generate_chart("daily_users")
-            
             if chart_path and os.path.exists(chart_path):
                 with open(chart_path, 'rb') as chart_file:
                     await context.bot.send_photo(
                         chat_id=update.effective_chat.id,
                         photo=chart_file,
-                        caption="📊 **مخطط نشاط المستخدمين (آخر 7 أيام)**\n\n"
-                                "يشير الرسم البياني إلى عدد المستخدمين النشطين والمستخدمين الجدد يومياً.",
+                        caption="📊 **مخطط نشاط المستخدمين (آخر 7 أيام)**\n\nيشير الرسم البياني إلى عدد المستخدمين النشطين والمستخدمين الجدد يومياً.",
                         reply_markup=AdminHandler.analytics_menu()
                     )
                 os.remove(chart_path)
@@ -846,23 +731,18 @@ User ID: 7939712752
     
     @staticmethod
     async def export_analytics_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """تصدير بيانات التحليلات"""
         try:
             data_file = "analytics_data_export.json"
-            
             with open(data_file, 'w', encoding='utf-8') as f:
                 json.dump(analytics_system.data, f, indent=4, ensure_ascii=False)
-            
             with open(data_file, 'rb') as f:
                 await context.bot.send_document(
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=f"analytics_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                    caption="📥 **تم تصدير بيانات التحليلات**\n\n"
-                            "يحتوي الملف على جميع بيانات التحليلات والإحصائيات.",
+                    caption="📥 **تم تصدير بيانات التحليلات**\n\nيحتوي الملف على جميع بيانات التحليلات والإحصائيات.",
                     reply_markup=AdminHandler.analytics_menu()
                 )
-            
             os.remove(data_file)
         except Exception as e:
             logger.error(f"Error exporting analytics data: {e}")
@@ -871,7 +751,6 @@ User ID: 7939712752
     
     @staticmethod
     async def refresh_analytics_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """تحديث بيانات التحليلات"""
         try:
             analytics_system.load_data()
             await update.callback_query.answer("✅ تم تحديث بيانات التحليلات", show_alert=True)
@@ -882,19 +761,13 @@ User ID: 7939712752
     
     @staticmethod
     async def cleanup_analytics_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """تنظيف البيانات القديمة"""
         try:
             keyboard = [
-                [
-                    InlineKeyboardButton("🗑️ حذف بيانات قديمة (30+ يوم)", callback_data="admin_analytics_cleanup_confirm"),
-                    InlineKeyboardButton("❌ إلغاء", callback_data="admin_analytics")
-                ]
+                [InlineKeyboardButton("🗑️ حذف بيانات قديمة (30+ يوم)", callback_data="admin_analytics_cleanup_confirm"),
+                 InlineKeyboardButton("❌ إلغاء", callback_data="admin_analytics")]
             ]
-            
             await update.callback_query.edit_message_text(
-                "🧹 **تنظيف بيانات التحليلات القديمة**\n\n"
-                "⚠️ **تحذير:** هذه العملية ستقوم بحذف جميع البيانات الأقدم من 30 يوم.\n\n"
-                "هل أنت متأكد من المتابعة؟",
+                "🧹 **تنظيف بيانات التحليلات القديمة**\n\n⚠️ **تحذير:** هذه العملية ستقوم بحذف جميع البيانات الأقدم من 30 يوم.\n\nهل أنت متأكد من المتابعة؟",
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode='Markdown'
             )
@@ -904,152 +777,51 @@ User ID: 7939712752
     
     @staticmethod
     async def confirm_analytics_cleanup(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """تأكيد تنظيف البيانات"""
         try:
             cutoff_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
             deleted_count = 0
-            
-            # حذف البيانات القديمة من daily_stats
             for date in list(analytics_system.data["daily_stats"].keys()):
                 if date < cutoff_date:
                     del analytics_system.data["daily_stats"][date]
                     deleted_count += 1
-            
             analytics_system.save_data()
-            
             await update.callback_query.answer(f"✅ تم حذف {deleted_count} يوم من البيانات القديمة", show_alert=True)
             await AdminHandler.analytics_dashboard(update, context)
         except Exception as e:
             logger.error(f"Error confirming analytics cleanup: {e}")
             await update.callback_query.answer("❌ حدث خطأ في تنظيف البيانات", show_alert=True)
     
+    # ---------- أوامر الإدخال ----------
     @staticmethod
     async def add_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """إضافة رصيد لمستخدم"""
-        message = """
-💰 **إضافة رصيد**
-
-أرسل معرف المستخدم والمبلغ بالتنسيق التالي:
-
-مثال: 123456789 100
-        """
-        
+        message = "💰 **إضافة رصيد**\n\nأرسل معرف المستخدم والمبلغ بالتنسيق التالي:\n\nمثال: 123456789 100"
         context.user_data['admin_operation'] = 'add_balance'
-        
-        keyboard = [
-            [InlineKeyboardButton("❌ إلغاء", callback_data='admin_panel')]
-        ]
-        
-        await update.callback_query.edit_message_text(
-            message,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data='admin_panel')]]
+        await update.callback_query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
     
     @staticmethod
     async def deduct_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """خصم رصيد من مستخدم"""
-        message = """
-💸 خصم رصيد
-
-أرسل معرف التليجرام والمبلغ بالتنسيق التالي:
-user_id amount
-
-مثال: 123456789 50
-        """
-        
+        message = "💸 **خصم رصيد**\n\nأرسل معرف التليجرام والمبلغ بالتنسيق التالي:\nuser_id amount\n\nمثال: 123456789 50"
         context.user_data['admin_operation'] = 'deduct_balance'
-        
-        keyboard = [
-            [InlineKeyboardButton("❌ إلغاء", callback_data='admin_panel')]
-        ]
-        
-        await update.callback_query.edit_message_text(
-            message,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data='admin_panel')]]
+        await update.callback_query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
     
     @staticmethod
     async def user_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """عرض معلومات مستخدم"""
-        message = """
-ℹ️ معلومات المستخدم
-
-أرسل معرف التليجرام:
-        """
-        
+        message = "ℹ️ **معلومات المستخدم**\n\nأرسل معرف التليجرام:"
         context.user_data['admin_operation'] = 'user_info'
-        
-        keyboard = [
-            [InlineKeyboardButton("❌ إلغاء", callback_data='admin_panel')]
-        ]
-        
-        await update.callback_query.edit_message_text(
-            message,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-    
-    @staticmethod
-    async def view_pending_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """عرض المعاملات المعلقة"""
-        try:
-            pending_transactions = store.get_pending_transactions()
-            
-            if not pending_transactions:
-                message = "✅ لا توجد معاملات معلقة حالياً"
-            else:
-                message = "⏳ المعاملات المعلقة:\n\n"
-                for i, transaction in enumerate(pending_transactions, 1):
-                    user = store.getUserById(transaction['user_id'])
-                    username = user[2] if user else "غير معروف"
-                    
-                    message += f"{i}. {transaction.get('action_type', 'معاملة').upper()}\n"
-                    message += f"👤 المستخدم: {username}\n"
-                    message += f"💰 المبلغ: {transaction.get('value', 0)}\n"
-                    message += f"📅 التاريخ: {transaction.get('created_at', 'غير معروف')}\n"
-                    message += f"🆔 ID: {transaction['id']}\n\n"
-            
-            keyboard = [
-                [
-                    InlineKeyboardButton("✅ موافقة على معاملة", callback_data='admin_approve'),
-                    InlineKeyboardButton("❌ رفض معاملة", callback_data='admin_reject')
-                ],
-                [InlineKeyboardButton("🔙 رجوع", callback_data='admin_panel')]
-            ]
-            
-            await update.callback_query.edit_message_text(
-                message,
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-        except Exception as e:
-            logger.error(f"Error viewing pending transactions: {e}")
-            await update.callback_query.edit_message_text(
-                "❌ حدث خطأ في عرض المعاملات المعلقة",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data='admin_panel')]])
-            )
+        keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data='admin_panel')]]
+        await update.callback_query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
     
     @staticmethod
     async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """إرسال رسالة جماعية"""
-        message = """
-📢 إرسال رسالة جماعية
-
-أرسل الرسالة التي تريد إرسالها لجميع المستخدمين:
-        """
-        
+        message = "📢 **إرسال رسالة جماعية**\n\nأرسل الرسالة التي تريد إرسالها لجميع المستخدمين:"
         context.user_data['admin_operation'] = 'broadcast'
-        
-        keyboard = [
-            [InlineKeyboardButton("❌ إلغاء", callback_data='admin_panel')]
-        ]
-        
-        await update.callback_query.edit_message_text(
-            message,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data='admin_panel')]]
+        await update.callback_query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
     
     @staticmethod
     async def handle_admin_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """معالجة مدخلات الإدمن"""
         operation = context.user_data.get('admin_operation')
         text = update.message.text.strip()
         
@@ -1074,201 +846,134 @@ user_id amount
         
         context.user_data.pop('admin_operation', None)
     
+    # ---------- دوال المساعدة الداخلية ----------
     @staticmethod
     async def _handle_maintenance_notice(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
-        """معالجة رسالة الصيانة"""
         try:
             AdminHandler.MAINTENANCE_MESSAGE = text
-            
             await AdminHandler._send_broadcast_message(
                 context,
                 f"🔔 **إشعار مهم**\n\n{text}\n\n⏰ التاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
             )
-            
             await update.message.reply_text(
                 "✅ تم تحديث رسالة الصيانة وإرسالها للمستخدمين",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]])
             )
-            
         except Exception as e:
             logger.error(f"Error in maintenance notice: {e}")
-            await update.message.reply_text(
-                "❌ حدث خطأ في إرسال الرسالة",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]])
-            )
+            await update.message.reply_text("❌ حدث خطأ في إرسال الرسالة",
+                                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]]))
     
     @staticmethod
     async def _handle_add_jackpot_id(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
-        """معالجة إضافة ID فائز"""
         try:
             AdminHandler.JACKPOT_WINNERS.append(text)
-            
             await update.message.reply_text(
-                f"✅ **تم إضافة ID الفائز بنجاح!**\n\n"
-                f"🏆 **الـ ID المضاف:** {text}\n"
-                f"📊 **العدد الكلي الآن:** {len(AdminHandler.JACKPOT_WINNERS)}\n",
+                f"✅ **تم إضافة ID الفائز بنجاح!**\n\n🏆 **الـ ID المضاف:** {text}\n📊 **العدد الكلي الآن:** {len(AdminHandler.JACKPOT_WINNERS)}",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة الجاكبوت", callback_data='admin_jackpot')]])
             )
-            
         except Exception as e:
             logger.error(f"Error adding jackpot ID: {e}")
-            await update.message.reply_text(
-                f"❌ **حدث خطأ في إضافة الـ ID:**\n\n{str(e)}",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة الجاكبوت", callback_data='admin_jackpot')]])
-            )
+            await update.message.reply_text(f"❌ **حدث خطأ في إضافة الـ ID:**\n\n{str(e)}",
+                                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة الجاكبوت", callback_data='admin_jackpot')]]))
     
     @staticmethod
     async def _handle_delete_jackpot_id(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
-        """معالجة حذف ID فائز"""
         try:
             try:
                 index = int(text.strip()) - 1
             except ValueError:
-                await update.message.reply_text(
-                    "❌ **رقم الـ ID غير صحيح!**",
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة الجاكبوت", callback_data='admin_jackpot')]])
-                )
+                await update.message.reply_text("❌ **رقم الـ ID غير صحيح!**",
+                                                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة الجاكبوت", callback_data='admin_jackpot')]]))
                 return
-            
             if index < 0 or index >= len(AdminHandler.JACKPOT_WINNERS):
-                await update.message.reply_text(
-                    f"❌ **رقم الـ ID غير موجود!**\n\nالرقم يجب أن يكون بين 1 و {len(AdminHandler.JACKPOT_WINNERS)}",
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة الجاكبوت", callback_data='admin_jackpot')]])
-                )
+                await update.message.reply_text(f"❌ **رقم الـ ID غير موجود!**\n\nالرقم يجب أن يكون بين 1 و {len(AdminHandler.JACKPOT_WINNERS)}",
+                                                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة الجاكبوت", callback_data='admin_jackpot')]]))
                 return
-            
             deleted_id = AdminHandler.JACKPOT_WINNERS.pop(index)
-            
             await update.message.reply_text(
-                f"✅ **تم حذف الـ ID بنجاح!**\n\n"
-                f"🏆 **الـ ID المحذوف:** {deleted_id}\n"
-                f"📊 **العدد الكلي الآن:** {len(AdminHandler.JACKPOT_WINNERS)}\n",
+                f"✅ **تم حذف الـ ID بنجاح!**\n\n🏆 **الـ ID المحذوف:** {deleted_id}\n📊 **العدد الكلي الآن:** {len(AdminHandler.JACKPOT_WINNERS)}",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة الجاكبوت", callback_data='admin_jackpot')]])
             )
-            
         except Exception as e:
             logger.error(f"Error deleting jackpot ID: {e}")
-            await update.message.reply_text(
-                f"❌ **حدث خطأ في حذف الـ ID:**\n\n{str(e)}",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة الجاكبوت", callback_data='admin_jackpot')]])
-            )
+            await update.message.reply_text(f"❌ **حدث خطأ في حذف الـ ID:**\n\n{str(e)}",
+                                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة الجاكبوت", callback_data='admin_jackpot')]]))
     
     @staticmethod
     async def _send_broadcast_message(context: ContextTypes.DEFAULT_TYPE, message: str):
-        """إرسال رسالة جماعية للمستخدمين"""
         try:
             users = store.get_all_users()
-            
             if not users:
                 logger.warning("لا يوجد مستخدمين لإرسال الرسالة لهم")
                 return 0
-            
-            user_count = len(users)
             successful_sends = 0
-            
-            logger.info(f"إرسال إشعار لـ {user_count} مستخدم")
-            
+            logger.info(f"إرسال إشعار لـ {len(users)} مستخدم")
             for user in users:
                 try:
                     telegram_id = user.get('telegram_id')
                     if telegram_id:
-                        await context.bot.send_message(
-                            chat_id=int(telegram_id),
-                            text=message,
-                            parse_mode='Markdown'
-                        )
+                        await context.bot.send_message(chat_id=int(telegram_id), text=message, parse_mode='Markdown')
                         successful_sends += 1
-                        
                         import asyncio
                         await asyncio.sleep(0.1)
-                        
                 except Exception as e:
                     logger.warning(f"لا يمكن إرسال إشعار للمستخدم {user.get('telegram_id')}: {e}")
-            
-            logger.info(f"تم إرسال الإشعار لـ {successful_sends} من {user_count} مستخدم")
+            logger.info(f"تم إرسال الإشعار لـ {successful_sends} من {len(users)} مستخدم")
             return successful_sends
-            
         except Exception as e:
             logger.error(f"Error in broadcast message: {e}")
             return 0
     
     @staticmethod
     async def _handle_balance_operation(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, operation: str):
-        """معالجة عمليات الرصيد"""
         try:
             parts = text.split()
             if len(parts) != 2:
-                await update.message.reply_text(
-                    "❌ تنسيق خاطئ. استخدم: user_id amount",
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]])
-                )
+                await update.message.reply_text("❌ تنسيق خاطئ. استخدم: user_id amount",
+                                                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]]))
                 return
-            
             telegram_id = parts[0]
             amount = int(parts[1])
-            
             user = store.getUserByTelegramId(telegram_id)
             if not user:
-                await update.message.reply_text(
-                    "❌ المستخدم غير موجود",
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]])
-                )
+                await update.message.reply_text("❌ المستخدم غير موجود",
+                                                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]]))
                 return
-            
             user_id = user['id']
             current_balance = store.get_user_balance(user_id)
-            
             if operation == 'add':
                 new_balance = current_balance + amount
-                action = "إضافة"
-                emoji = "➕"
+                action, emoji = "إضافة", "➕"
             else:
                 if current_balance < amount:
-                    await update.message.reply_text(
-                        f"❌ رصيد المستخدم غير كافي\n💵 الرصيد الحالي: {current_balance}",
-                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]])
-                    )
+                    await update.message.reply_text(f"❌ رصيد المستخدم غير كافي\n💵 الرصيد الحالي: {current_balance}",
+                                                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]]))
                     return
                 new_balance = current_balance - amount
-                action = "خصم"
-                emoji = "➖"
-            
+                action, emoji = "خصم", "➖"
             store.update_user_balance(user_id, new_balance)
-            
             try:
-                await context.bot.send_message(
-                    chat_id=int(telegram_id),
-                    text=f"{emoji} تم {action} {amount} إلى رصيدك\n💵 رصيدك الحالي: {new_balance}"
-                )
+                await context.bot.send_message(chat_id=int(telegram_id), text=f"{emoji} تم {action} {amount} إلى رصيدك\n💵 رصيدك الحالي: {new_balance}")
             except TelegramError as e:
                 logger.warning(f"لا يمكن إرسال إشعار للمستخدم {telegram_id}: {e}")
-            
             await update.message.reply_text(
                 f"✅ تم {action} {amount} بنجاح\n👤 المستخدم: {user.get('telegram_username', 'غير معروف')}\n💵 الرصيد الجديد: {new_balance}",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]])
-            )
-            
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]]))
         except (ValueError, IndexError) as e:
             logger.error(f"Error in balance operation: {e}")
-            await update.message.reply_text(
-                "❌ تنسيق خاطئ. استخدم: user_id amount",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]])
-            )
+            await update.message.reply_text("❌ تنسيق خاطئ. استخدم: user_id amount",
+                                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]]))
     
     @staticmethod
     async def _handle_user_info(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
-        """معالجة عرض معلومات المستخدم"""
         try:
             telegram_id = text.strip()
-            
             user = store.getUserByTelegramId(telegram_id)
             if not user:
-                await update.message.reply_text(
-                    "❌ المستخدم غير موجود",
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]])
-                )
+                await update.message.reply_text("❌ المستخدم غير موجود",
+                                                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]]))
                 return
-            
             message = f"""
 👤 معلومات المستخدم
 
@@ -1285,70 +990,40 @@ user_id amount
 👤 الاسم: {user.get('name', 'غير محدد')}
 🆔 معرف اللاعب: {user.get('player_id', 'غير محدد')}
             """
-            
-            await update.message.reply_text(
-                message,
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]])
-            )
+            await update.message.reply_text(message,
+                                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]]))
         except Exception as e:
             logger.error(f"Error in user info: {e}")
-            await update.message.reply_text(
-                "❌ حدث خطأ في عرض معلومات المستخدم",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]])
-            )
+            await update.message.reply_text("❌ حدث خطأ في عرض معلومات المستخدم",
+                                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]]))
     
     @staticmethod
     async def _handle_transaction_action(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, action: str):
-        """معالجة الموافقة/رفض المعاملات"""
-        try:
-            await update.message.reply_text(
-                "⚠️ هذه الميزة تحتاج لتعديل ملف transactions.py",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]])
-            )
-            
-        except Exception as e:
-            logger.error(f"Error in transaction action: {e}")
-            await update.message.reply_text(
-                "❌ حدث خطأ في معالجة المعاملة",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]])
-            )
+        await update.message.reply_text("⚠️ هذه الميزة تحتاج لتعديل ملف transactions.py",
+                                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]]))
     
     @staticmethod
     async def _handle_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
-        """معالجة الرسالة الجماعية"""
         try:
             users = store.get_all_users()
-            
             if not users:
-                await update.message.reply_text(
-                    "❌ لا يوجد مستخدمين لإرسال الرسالة لهم",
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]])
-                )
+                await update.message.reply_text("❌ لا يوجد مستخدمين لإرسال الرسالة لهم",
+                                                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]]))
                 return
-            
             user_count = len(users)
             successful_sends = 0
             failed_sends = 0
-            
             await update.message.reply_text(f"📤 جاري إرسال الرسالة إلى {user_count} مستخدم...")
-            
             for user in users:
                 try:
                     telegram_id = user.get('telegram_id')
                     if telegram_id:
-                        await context.bot.send_message(
-                            chat_id=int(telegram_id),
-                            text=f"📢 **رسالة من الإدارة:**\n\n{text}"
-                        )
+                        await context.bot.send_message(chat_id=int(telegram_id), text=f"📢 **رسالة من الإدارة:**\n\n{text}")
                         successful_sends += 1
-                        
                         import asyncio
                         await asyncio.sleep(0.1)
-                        
                 except Exception as e:
                     failed_sends += 1
-                    logger.warning(f"Failed to send to user {user.get('telegram_id')}: {e}")
-            
             report = f"""
 ✅ **تم إرسال الرسالة الجماعية بنجاح**
 
@@ -1360,25 +1035,27 @@ user_id amount
 📝 **الرسالة المرسلة:**
 {text[:200]}...
             """
-            
-            await update.message.reply_text(
-                report,
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]])
-            )
-            
+            await update.message.reply_text(report,
+                                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]]))
         except Exception as e:
             logger.error(f"Error in broadcast: {e}")
-            await update.message.reply_text(
-                f"❌ حدث خطأ في إرسال الرسالة الجماعية:\n\n{str(e)}",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]])
-            )
+            await update.message.reply_text(f"❌ حدث خطأ في إرسال الرسالة الجماعية:\n\n{str(e)}",
+                                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]]))
+    
+    # ---------- دوال غير مكتملة ----------
+    @staticmethod
+    async def _handle_approve_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.callback_query.answer("قيد التطوير", show_alert=True)
     
     @staticmethod
+    async def _handle_reject_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.callback_query.answer("قيد التطوير", show_alert=True)
+    
+    # ---------- موزع الأزرار الرئيسي ----------
+    @staticmethod
     async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """معالجة استدعاءات الإدمن"""
         query = update.callback_query
         await query.answer()
-        
         data = query.data
         
         if data == 'admin_panel':
@@ -1417,8 +1094,6 @@ user_id amount
             await AdminHandler.view_pending_transactions(update, context)
         elif data == 'admin_broadcast':
             await AdminHandler.broadcast_message(update, context)
-        
-        # معالجات التحليلات الجديدة
         elif data == 'admin_analytics':
             await AdminHandler.analytics_dashboard(update, context)
         elif data == 'admin_analytics_users':
@@ -1439,40 +1114,31 @@ user_id amount
             await AdminHandler.cleanup_analytics_data(update, context)
         elif data == 'admin_analytics_cleanup_confirm':
             await AdminHandler.confirm_analytics_cleanup(update, context)
-        
         elif data == 'admin_stats':
-            await query.edit_message_text(
-                "📊 الإحصائيات التفصيلية قيد التطوير",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data='admin_panel')]])
-            )
+            await query.edit_message_text("📊 الإحصائيات التفصيلية قيد التطوير",
+                                          reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data='admin_panel')]]))
         elif data == 'admin_gifts':
-            await query.edit_message_text(
-                "🎁 إدارة أكواد الهدايا قيد التطوير",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data='admin_panel')]])
-            )
+            await query.edit_message_text("🎁 إدارة أكواد الهدايا قيد التطوير",
+                                          reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data='admin_panel')]]))
         elif data == 'admin_users_list':
-            await query.edit_message_text(
-                "📋 قائمة المستخدمين قيد التطوير",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data='admin_users')]])
-            )
+            await query.edit_message_text("📋 قائمة المستخدمين قيد التطوير",
+                                          reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data='admin_users')]]))
         elif data == 'admin_approve':
             await AdminHandler._handle_approve_transaction(update, context)
         elif data == 'admin_reject':
             await AdminHandler._handle_reject_transaction(update, context)
+        else:
+            await query.answer("زر غير معروف", show_alert=True)
 
-# دالة مساعدة للاستخدام في bot.py
+# دوال مستقلة
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالج الأمر /admin"""
     user_id = str(update.effective_user.id)
-    
     if AdminHandler.is_admin(user_id):
         await AdminHandler.admin_panel(update, context)
     else:
         await update.message.reply_text("❌ ليس لديك صلاحية الوصول إلى لوحة الإدمن")
 
-# للاستخدام في button.py
 async def handle_admin_button(query, user_id):
-    """معالجة ضغط زر الإدمن"""
     if AdminHandler.is_admin(user_id):
         await AdminHandler.admin_panel(query, None)
     else:
