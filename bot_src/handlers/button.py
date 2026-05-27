@@ -181,7 +181,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         import handlers.wheel_handler
         await handlers.wheel_handler.handle_spin_wheel(update, context)
 
-    # ✅ فتح لوحة الإدمن مباشرة (أولوية)
+    # ### NEW ### معالج صريح لفتح لوحة الإدمن مباشرة (قبل المعالج العام)
     elif data == 'admin_panel':
         await handlers.admin_handler.AdminHandler.admin_panel(update, context)
         return
@@ -254,9 +254,12 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             transaction_id = '_'.join(parts[2:])
             await handlers.transactions.reject_transaction(query, transaction_id, transaction_type)
 
-    # باقي أزرار الإدمن (غير admin_panel نفسها)
+    # المعالج العام لأزرار الإدمن الأخرى (باستثناء admin_panel الذي عولج أعلاه)
     elif data.startswith('admin_'):
-        await handlers.admin_handler.AdminHandler.handle_admin_callback(update, context)
+        if not (data.startswith('admin_approve_') or
+                data.startswith('admin_reject_') or
+                data.startswith('admin_analytics_')):
+            await handlers.admin_handler.AdminHandler.handle_admin_callback(update, context)
 
     elif data.startswith('maintenance_'):
         await handlers.maintenance_scheduler.MaintenanceScheduler.handle_maintenance_callback(update, context)
