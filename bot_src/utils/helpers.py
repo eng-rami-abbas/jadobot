@@ -67,6 +67,16 @@ http://t.me/@Jado93_bot?start=ref_{telegram_id}
     return message, referral_link
 
 def getKeyboard(user_id=None):
+    # ---- بناء زر اللفة المجانية مباشرة (WebApp) إذا وُجد user_id ----
+    if user_id:
+        # استيراد دالة توليد الرابط
+        from handlers.wheel import get_wheel_webapp_url
+        wheel_url = get_wheel_webapp_url(str(user_id))
+        wheel_button = InlineKeyboardButton("اللفة المجانية 🎡", web_app=WebAppInfo(url=wheel_url))
+    else:
+        # احتياط (لن يحدث غالباً) يستخدم callback قديم
+        wheel_button = InlineKeyboardButton("اللفة المجانية 🎡", callback_data="spin_wheel")
+
     keyboard = [
         [InlineKeyboardButton("⚡️ Ichancy", callback_data='ichancy')],
         [
@@ -76,17 +86,18 @@ def getKeyboard(user_id=None):
         [InlineKeyboardButton("نظام الاحالات 💰", callback_data='referral')],
        
         [
-            InlineKeyboardButton("كود هدية 🎁", callback_data='gift_code'),  # 🔥 تم التغيير
+            InlineKeyboardButton("كود هدية 🎁", callback_data='gift_code'),
             InlineKeyboardButton("اهداء رصيد 🎁", callback_data='send_gift')
         ],
        
         [   InlineKeyboardButton(" الجاكبوت والألعاب والبونصات والعروض الحالية 🎲🎁", callback_data='jackpot')
-        ],  # ← أضف هذا الزر
+        ],
         
         [   InlineKeyboardButton("السجل 📜", callback_data='log'),
         ],
 
-        [InlineKeyboardButton("اللفة المجانية 🎡", callback_data="spin_wheel")],
+        # زر اللفة المجانية - يفتح WebApp مباشرة عند وجود user_id
+        [wheel_button],
         
         [InlineKeyboardButton("تطبيق vpn لتشغيل كامل اقسام الموقع", url="https://t.me/Ichancy_boot_Vbn/3"),
          InlineKeyboardButton("ichancy apk", url="https://android.betcoapps.com/novichok/ichancy_com/ichancy_com.apk")
@@ -103,13 +114,11 @@ def getKeyboard(user_id=None):
         
     ]
     
-    return keyboard
     # إضافة زر الإدمن إذا كان المستخدم أدمن
     try:
         if user_id and handlers.admin_handler.AdminHandler.is_admin(user_id):
             keyboard.append([InlineKeyboardButton("🔧 لوحة الإدمن", callback_data='admin_panel')])
     except ImportError:
-        # إذا لم يكن ملف admin_handler موجوداً بعد، تخطي إضافة الزر
         logger.warning("admin_handler not available yet")
         pass
     except Exception as e:
@@ -140,7 +149,6 @@ def format_currency(amount: int) -> str:
     """تنسيق العملة"""
     return f"{amount:,}"
 
-    # أزرار لوحة التحكم المتقدمة
 def getAdminKeyboard():
     """لوحة أدوات الإدمن المتقدمة"""
     keyboard = [
