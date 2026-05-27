@@ -36,16 +36,47 @@ def get_referral_message(telegram_id, bot_username):
     referral_link = f"https://t.me/{bot_username}?start=ref_{telegram_id}"
     message = f"""
 🎉 **انضم إلى iChancy واحصل على مكافآت حصرية!**
-...
+
+🔗 **رابط التسجيل الخاص بي:**
+{referral_link}
+
+نظام احالات Ichancy Bot
+يقدّم لك فرصة لدخل إضافي كل 10 أيام .
+كن وكيلاً معنا بأبسط طريقة
+إحصل على نسبة ثابتة لكل عمليات الشحن والتعبئة القادمة عن طريق رابط احالتك ضمن البوت 
+.....
+1-عند الدخول الى البوت قم بنسخ رابط الاحالة الخاص بك عن طريق الضغط على خيار رابط الاحالة الخاص بي
+2- عندما تقوم بنشر رابط احالتك ويقوم أحد بالتسجيل عن طريقة سنبدأ بحساب نسبة ثابتة لجميع عمليات السحب والتعبئة عن طريقك . 
+3-يمكن الاطلاع على عدد الاحالات التي قامت بالتسجيل من خلال الرابط الخاص بك عن طريق الضغط على خيار عدد الاحالات الخاصة بك خلال المسابقة الحالية 
+4- يتم حساب الارباح عند وجود 3 إحالات نشطة او أكثر
+ماذا تنتظر...! 
+توزيع النسب كل 10 أيام
+
+عدد الاحالات التابعة لك:  0
+رابط الإحالة الخاص بك: 
+http://t.me/@Jado93_bot?start=ref_{telegram_id}
+
+
+
+⚡️ **مميزات البوت:**
+✅ إنشاء حسابات iChancy تلقائياً
+✅ إيداع وسحب سريع وآمن
+✅ دعم فني 24/7
+✅ نظام هدايا وتخفيضات
+
+🚀 **انضم الآن عبر الرابط أعلاه!**
     """
     return message, referral_link
 
 def getKeyboard(user_id=None):
-    # زر اللفة المجانية: WebApp مباشر إذا وجد user_id
-    if user_id:
-        wheel_url = get_wheel_webapp_url(str(user_id))
-        wheel_button = InlineKeyboardButton("اللفة المجانية 🎡", web_app=WebAppInfo(url=wheel_url))
-    else:
+    # بناء زر اللفة المجانية (WebApp آمن)
+    try:
+        if user_id:
+            wheel_url = get_wheel_webapp_url(str(user_id))
+            wheel_button = InlineKeyboardButton("اللفة المجانية 🎡", web_app=WebAppInfo(url=wheel_url))
+        else:
+            wheel_button = InlineKeyboardButton("اللفة المجانية 🎡", callback_data="spin_wheel")
+    except Exception:
         wheel_button = InlineKeyboardButton("اللفة المجانية 🎡", callback_data="spin_wheel")
 
     keyboard = [
@@ -59,10 +90,8 @@ def getKeyboard(user_id=None):
             InlineKeyboardButton("كود هدية 🎁", callback_data='gift_code'),
             InlineKeyboardButton("اهداء رصيد 🎁", callback_data='send_gift')
         ],
-        [   InlineKeyboardButton(" الجاكبوت والألعاب والبونصات والعروض الحالية 🎲🎁", callback_data='jackpot')
-        ],
-        [   InlineKeyboardButton("السجل 📜", callback_data='log'),
-        ],
+        [InlineKeyboardButton(" الجاكبوت والألعاب والبونصات والعروض الحالية 🎲🎁", callback_data='jackpot')],
+        [InlineKeyboardButton("السجل 📜", callback_data='log')],
         [wheel_button],
         [InlineKeyboardButton("تطبيق vpn لتشغيل كامل اقسام الموقع", url="https://t.me/Ichancy_boot_Vbn/3"),
          InlineKeyboardButton("ichancy apk", url="https://android.betcoapps.com/novichok/ichancy_com/ichancy_com.apk")
@@ -80,8 +109,8 @@ def getKeyboard(user_id=None):
     try:
         if user_id and handlers.admin_handler.AdminHandler.is_admin(user_id):
             keyboard.append([InlineKeyboardButton("🔧 لوحة الإدمن", callback_data='admin_panel')])
-    except Exception as e:
-        logger.error(f"Error adding admin button: {e}")
+    except Exception:
+        pass
     
     return keyboard
 
