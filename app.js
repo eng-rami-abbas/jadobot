@@ -62,7 +62,7 @@ class JadoWheel {
         }
     }
 
-    // التحقق من شرط الإيداع وعدم وجود تدويرة اليوم
+    // التحقق من شرط الإيداع (اليوم فقط) وعدم وجود تدويرة اليوم
     async checkEligibility() {
         if (!this.supabase || !this.user?.id) {
             // لا يمكن التحقق، نسمح بالتدوير (لأغراض التطوير)
@@ -73,23 +73,27 @@ class JadoWheel {
         try {
             const userId = this.user.id.toString();
 
-            // 1. التحقق من وجود إيداع واحد على الأقل للمستخدم
+            // 1. التحقق من وجود إيداع واحد على الأقل اليوم
+            const now = new Date();
+            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+
             const { data: deposit, error: depError } = await this.supabase
                 .from('deposits')
                 .select('id')
                 .eq('user_id', userId)
+                .gte('created_at', todayStart)   // إيداع اليوم فقط
                 .limit(1);
 
             if (depError) throw depError;
             if (!deposit || deposit.length === 0) {
-                // لا يوجد إيداع
+                // لا يوجد إيداع اليوم
                 this.spinBtn.disabled = true;
-                this.showSpinMessage('يجب عليك الإيداع أولاً لاستخدام العجلة.');
+                this.showSpinMessage('يجب عليك الإيداع اليوم أولاً لاستخدام العجلة.');
                 return;
             }
 
             // 2. التحقق من عدم وجود تدويرة مسجلة اليوم
-            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+            const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
             const { data: todaySpin, error: spinError } = await this.supabase
                 .from('spins')
                 .select('id')
