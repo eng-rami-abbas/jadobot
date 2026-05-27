@@ -103,5 +103,11 @@ const CONFIG = {
     // ============================================
     WEIGHTS: [0.20, 0.15, 0.15, 0.05, 0.15, 0.05, 0.15, 0.10]
 };
-
+// ===== SUPABASE CONFIGURATION =====
+// ⚠️ استخدم المفتاح العام (anon key) وليس مفتاح الخدمة السري!
+const SUPABASE_CONFIG = {
+    URL: 'https://your-project-id.supabase.co',  // ضع رابط مشروعك
+    ANON_KEY: 'your-anon-key-here'               // ضع المفتاح العام
+};
+window.SUPABASE_CONFIG = SUPABASE_CONFIG;
 window.CONFIG = CONFIG;
