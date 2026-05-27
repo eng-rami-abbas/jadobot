@@ -1,7 +1,7 @@
 import os
 import json
 from urllib.parse import urlencode
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from telegram import InlineKeyboardButton, WebAppInfo
 from telegram.ext import ContextTypes
 import Logger
 import supabase_integration as supa
@@ -25,14 +25,10 @@ def get_wheel_webapp_url(telegram_id: str) -> str:
     return f"{base}{sep}{urlencode({'user_id': telegram_id})}"
 
 
-async def handle_spin_wheel(update, context):
-    """فتح WebApp العجلة مباشرة عند الضغط على زر اللفة المجانية."""
-    query = update.callback_query
-    user_id = str(update.effective_user.id)
-    wheel_url = get_wheel_webapp_url(user_id)
-
-    # ✅ هذا السطر يفتح العجلة فورًا بدون أي رسالة وسيطة
-    await query.answer(web_app=WebAppInfo(url=wheel_url))
+def get_wheel_button(telegram_id: str) -> InlineKeyboardButton:
+    """إرجاع زر WebApp جاهز للاستخدام في القائمة الرئيسية."""
+    url = get_wheel_webapp_url(telegram_id)
+    return InlineKeyboardButton("🎰 لفة مجانية", web_app=WebAppInfo(url=url))
 
 
 async def handle_web_app_data(update, context):
