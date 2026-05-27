@@ -129,9 +129,8 @@ def getKeyboard(user_id=None):
     # إضافة زر الإدمن إذا كان المستخدم أدمن
     try:
         if user_id and handlers.admin_handler.AdminHandler.is_admin(user_id):
-            keyboard.append([InlineKeyboardButton("🔧 لوحة الإدمن", callback_data='admin_panel')])
-    except ImportError:
-        logger.warning("admin_handler not available yet")
+            keyboard.append([InlineKeyboardButton("🔧 لوحة الإدمن", callback_data="admin_panel_direct")])
+    except:
         pass
     except Exception as e:
         logger.error(f"Error checking admin status: {e}")
