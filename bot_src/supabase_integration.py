@@ -5,7 +5,7 @@ from supabase import create_client, Client
 
 logger = logging.getLogger(__name__)
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://vszunhzxcdedcasiauza.supabase.co")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://kpnxtvargeajpxgswdso.supabase.co")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 _client: Client = None
