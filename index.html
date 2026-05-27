@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>JADO BOT - عجلة الحظ</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Background -->
+        <div class="bg-layer">
+            <img src="background.png" alt="bg" id="bg-img" onerror="this.style.display='none'">
+        </div>
+
+        <div class="main-container">
+
+            <!-- Sound Toggle -->
+            <button id="sound-btn" class="sound-btn" onclick="toggleSound()">
+                <img src="assets/sound.png" alt="الصوت" id="sound-icon">
+                <span class="sound-label">الصوت</span>
+            </button>
+
+            <!-- Wheel Area -->
+            <div class="wheel-wrapper">
+                <!-- Outer Ring with Lights -->
+                <div class="outer-ring">
+                    <div class="lights-container" id="lights"></div>
+                </div>
+
+                <!-- Rotating Wheel -->
+                <div class="wheel" id="wheel">
+                    <canvas id="wheel-canvas" width="600" height="600"></canvas>
+                </div>
+
+                <!-- Static SPIN Button (Center, doesn't rotate) -->
+                <div class="spin-btn-container" id="spin-btn-container">
+                    <button id="spin-btn" class="spin-btn" onclick="spinWheel()">
+                        <img src="assets/spin.png" alt="SPIN" id="spin-img">
+                    </button>
+                </div>
+
+                <!-- Static Pointer (Top, doesn't rotate) -->
+                <div class="pointer-container">
+                    <img src="assets/pointer.png" alt="pointer" class="pointer-img" id="pointer-img">
+                </div>
+            </div>
+
+            <!-- Logo -->
+            <div class="logo-container">
+                <img src="assets/logo.png" alt="JADO BOT" class="logo-img">
+            </div>
+
+            <!-- Result Overlay -->
+            <div id="result-panel" class="result-panel hidden">
+                <div class="result-content">
+                    <div class="result-icon" id="result-icon"></div>
+                    <div class="result-text" id="result-text"></div>
+                    <div class="result-value" id="result-value"></div>
+                    <button class="close-btn" onclick="closeResult()">حسناً ✓</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Audio -->
+    <audio id="spin-sound" loop>
+        <source src="assets/spin.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="win-sound">
+        <source src="assets/win.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="tick-sound">
+        <source src="assets/tick.mp3" type="audio/mpeg">
+    </audio>
+
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
