@@ -106,8 +106,8 @@ const CONFIG = {
 // ===== SUPABASE CONFIGURATION =====
 // ⚠️ استخدم المفتاح العام (anon key) وليس مفتاح الخدمة السري!
 const SUPABASE_CONFIG = {
-    URL: 'https://your-project-id.supabase.co',  // ضع رابط مشروعك
-    ANON_KEY: 'your-anon-key-here'               // ضع المفتاح العام
+    URL: 'https://kpnxtvargeajpxgswdso.supabase.co',  // ضع رابط مشروعك
+    ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtwbnh0dmFyZ2VhanB4Z3N3ZHNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1MTM1NDgsImV4cCI6MjA5MjA4OTU0OH0.nLWI13zA_60KixjgE-ErieCuaSg3D756zRW_FqwOh-g'               // ضع المفتاح العام
 };
 window.SUPABASE_CONFIG = SUPABASE_CONFIG;
 window.CONFIG = CONFIG;
