@@ -81,7 +81,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 await query.answer("❌ لم تشترك بعد", show_alert=True)
         except Exception:
             await query.answer("⚠️ خطأ في التحقق", show_alert=True)
-
     elif data == "agree":
         try:
             supa.upsert_user(telegram_id=user_id, username=update.effective_user.username,
@@ -92,12 +91,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             print(f"Error in terms approval: {e}")
             await query.message.edit_text("❌ حدث خطأ، يرجى المحاولة مرة أخرى")
         return
-
     elif data == "reject":
         await query.message.edit_text("❌ لا يمكنك استخدام البوت بدون الموافقة")
         return
 
-    # ======================== الأزرار الرئيسية ========================
     if 'guide' in data:
         await guidesButton(update, context, query)
     elif data == 'referral' or data.startswith('referral_'):
@@ -171,17 +168,9 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             transaction_type = parts[1]
             transaction_id = '_'.join(parts[2:])
             await handlers.transactions.reject_transaction(query, transaction_id, transaction_type)
-
-    # ======== 🟢 معالجة زر لوحة الإدمن (منفصل، بدون تعارض) ========
-    elif data == 'admin_panel':
-        await handlers.admin_handler.AdminHandler.admin_panel(update, context)
-        return
-
-    # ======== معالجة باقي أزرار الإدمن ========
-    elif data.startswith('admin_'):
+    elif data == 'admin_panel' or data.startswith('admin_'):
         if not (data.startswith('admin_approve_') or data.startswith('admin_reject_') or data.startswith('admin_analytics_')):
             await handlers.admin_handler.AdminHandler.handle_admin_callback(update, context)
-
     elif data.startswith('maintenance_'):
         await handlers.maintenance_scheduler.MaintenanceScheduler.handle_maintenance_callback(update, context)
     elif data.startswith('monitor_'):
