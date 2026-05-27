@@ -27,18 +27,13 @@ from config.telegram import Update
 from telegram.ext import ContextTypes
 
 
-# =========================
-# 🔒 CHECK GLOBAL ACCESS (CHANNEL + TERMS + BLOCKED)
-# =========================
 async def is_blocked(update, context):
     user_id = update.effective_user.id
-
     try:
         if supa.is_user_blocked(user_id):
             return "blocked"
     except Exception:
         pass
-
     try:
         member = await context.bot.get_chat_member(
             chat_id="@jado_ichancy",
@@ -48,13 +43,9 @@ async def is_blocked(update, context):
             return "channel"
     except Exception:
         return "channel"
-
     return None
 
 
-# =========================
-# BUTTON HANDLER
-# =========================
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
@@ -73,9 +64,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception:
         pass
 
-    # =========================
-    # 🔴 ALWAYS ALLOWED BUTTONS
-    # =========================
     ALWAYS_ALLOWED = {
         "check_sub",
         "agree",
@@ -83,72 +71,49 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "terms_and_conditions"
     }
 
-    # =========================
-    # 🔒 GLOBAL BLOCK (ENFORCEMENT)
-    # =========================
     if data not in ALWAYS_ALLOWED:
         block = await is_blocked(update, context)
-
         if block == "blocked":
             await query.answer("🚫 تم حظر حسابك. تواصل مع الدعم.", show_alert=True)
             return
-
         if block == "terms":
             await query.answer("⚠️ يجب الموافقة على الشروط أولاً", show_alert=True)
             await handlers.conditions.handle_terms_and_conditions(query, mode="start")
             return
-
         if block == "channel":
             await query.answer("❌ يجب الاشتراك بالقناة أولاً", show_alert=True)
             return
 
-    # =========================
-    # 🔴 SUBSCRIPTION CHECK
-    # =========================
     if data == "check_sub":
         try:
             member = await context.bot.get_chat_member(
                 chat_id="@jado_ichancy",
                 user_id=user_id
             )
-
             if member.status in ["member", "administrator", "creator"]:
                 await query.message.reply_text("✅ تم التحقق من الاشتراك، اضغط /start")
             else:
                 await query.answer("❌ لم تشترك بعد", show_alert=True)
-
         except Exception:
             await query.answer("⚠️ خطأ في التحقق", show_alert=True)
 
-    # =========================
-    # 🔴 TERMS ACCEPT / REJECT (FIRST TIME ONLY)
-    # =========================
     elif data == "agree":
         try:
-            # Save user to Supabase only
             supa.upsert_user(
                 telegram_id=user_id,
                 username=update.effective_user.username,
                 first_name=update.effective_user.first_name or "",
                 last_name=update.effective_user.last_name or ""
             )
-
-            # Send success message
             await query.message.edit_text("✅ تم قبول الشروط، اضغط /start للمتابعة")
-            
         except Exception as e:
             print(f"Error in terms approval: {e}")
             await query.message.edit_text("❌ حدث خطأ، يرجى المحاولة مرة أخرى")
-        
         return
 
     elif data == "reject":
         await query.message.edit_text("❌ لا يمكنك استخدام البوت بدون الموافقة")
         return
-
-    # =========================
-    # 📌 MAIN SYSTEM
-    # =========================
 
     if 'guide' in data:
         await guidesButton(update, context, query)
@@ -162,7 +127,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     elif data in ['jackpot', 'casino_games', 'sports_betting', 'betting_history',
                   'promotions', 'vip_program', 'live_support', 'open_ichancy'] or \
          data.startswith(('jackpot_', 'casino_', 'sports_', 'vip_', 'gaming_')):
-
         await handlers.gaming_handler.GamingHandler.handle_gaming_menu_callback(update, context)
 
     elif data == 'log' or data.startswith('log_'):
@@ -255,12 +219,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             transaction_id = '_'.join(parts[2:])
             await handlers.transactions.reject_transaction(query, transaction_id, transaction_type)
 
-    # ======== 🟢 معالج admin_panel مباشر (جديد) ========
+    # ✅ معالج admin_panel المباشر (جديد، دون تغيير باقي الأزرار)
     elif data == 'admin_panel':
         await handlers.admin_handler.AdminHandler.admin_panel(update, context)
         return
 
-    # ======== معالج باقي أزرار الإدمن (كما كان) ========
     elif data == 'admin_panel' or data.startswith('admin_'):
         if not (data.startswith('admin_approve_') or
                 data.startswith('admin_reject_') or
@@ -283,29 +246,19 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await query.answer(f"زر غير معروف: {data}", show_alert=True)
 
 
-# =========================
-# GUIDES
-# =========================
 async def guidesButton(update: Update, context: ContextTypes.DEFAULT_TYPE, query):
     data = query.data
-
     if data == "guides":
         await handlers.guidesHandlers.guides.handle_guides(query)
-
     elif data == "guides_what_is_ichancy":
         await handlers.guidesHandlers.guidesWhatIchancy.handle_guides_what_is_ichancy(query)
-
     elif data == "guides_how_deposit_telegram_account":
         await handlers.guidesHandlers.guidesHowDepositTelegramAccount.handle_guides_how_deposit_telegram_account(query)
-
     elif data == "guides_how_to_create_new_account":
         await handlers.guidesHandlers.guidesHowToCreateNewAccount.handle_guides_how_to_create_new_account(query)
-
     elif data == "guides_how_withdraw_telegram_account":
         await handlers.guidesHandlers.guidesHowWithdrawTelegramAccount.handle_guides_how_withdraw_telegram_account(query)
-
     elif data == "guides_how_deposit_ichancy_account":
         await handlers.guidesHandlers.guidesHowDepositIchancyAccount.handle_guides_how_deposit_ichancy_account(query)
-
     elif data == "guides_how_withdraw_ichancy_account":
         await handlers.guidesHandlers.guidesHowWithdrawIchancyAccount.handle_guides_how_withdraw_ichancy_account(query)
