@@ -11,7 +11,6 @@ load_dotenv()
 
 logger = Logger.getLogger()
 
-# إعدادات العجلة
 WHEEL_WEBAPP_URL = os.getenv(
     'WHEEL_WEBAPP_URL',
     'https://eng-rami-abbas.github.io/jadobot/',
@@ -27,43 +26,17 @@ def get_wheel_webapp_url(telegram_id: str) -> str:
 
 
 async def handle_spin_wheel(update, context):
-    """فتح واجهة العجلة مباشرة – التحقق من الأهلية يتم داخل WebApp."""
+    """فتح WebApp العجلة مباشرة عند الضغط على زر اللفة المجانية."""
     query = update.callback_query
-    await query.answer()
-
     user_id = str(update.effective_user.id)
     wheel_url = get_wheel_webapp_url(user_id)
 
-    # زر واحد فقط لفتح العجلة (WebApp)
-    keyboard = [[InlineKeyboardButton("🎰 افتح العجلة", web_app=WebAppInfo(url=wheel_url))]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    try:
-        await query.edit_message_text(
-            "🎰 **اللفة المجانية**\n\nاضغط على الزر أدناه لفتح العجلة!",
-            reply_markup=reply_markup,
-            parse_mode="Markdown"
-        )
-    except Exception:
-        await query.message.reply_text(
-            "🎰 **اللفة المجانية**\n\nاضغط على الزر أدناه لفتح العجلة!",
-            reply_markup=reply_markup,
-            parse_mode="Markdown"
-        )
-
-
-# لا حاجة لـ get_wheel_keyboard الآن، لكن يمكن الاحتفاظ بها للتوافق مع أجزاء أخرى
-def get_wheel_keyboard():
-    """لوحة مفاتيح العجلة (قديمة - للاستخدام في أجزاء أخرى إن وجدت)."""
-    keyboard = [
-        [InlineKeyboardButton("🎰 لفة مجانية", callback_data="spin_wheel")],
-        [InlineKeyboardButton("🔙 رجوع", callback_data="back_to_menu")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
+    # ✅ هذا السطر يفتح العجلة فورًا بدون أي رسالة وسيطة
+    await query.answer(web_app=WebAppInfo(url=wheel_url))
 
 
 async def handle_web_app_data(update, context):
-    """إشعار المستخدم بنتيجة الروليت (الجائزة تُصرف من API السيرفر)."""
+    """استقبال نتيجة التدوير من WebApp."""
     if not update.message or not update.message.web_app_data:
         return
 
