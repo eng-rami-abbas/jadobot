@@ -182,11 +182,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         import handlers.wheel_handler
         await handlers.wheel_handler.handle_spin_wheel(update, context)
 
-    # ====== 🔥 إضافة: فتح لوحة الإدمن مباشرة ======
-    elif data == 'admin_panel':
+    # ---------- ✅ فتح لوحة الإدمن مباشرة (callback جديد) ----------
+    elif data == 'admin_panel_direct':
         await handlers.admin_handler.AdminHandler.admin_panel(update, context)
         return
-    # ====== نهاية الإضافة ======
+    # ----------------------------------------------------------------
 
     elif data == 'ichancy':
         await handlers.ichancy.handle_ichancy(update, context)
