@@ -25,8 +25,14 @@ import supabase_integration as supa
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+headers = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}"
+}
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_KEY else None
+print("SUPABASE URL:", SUPABASE_URL)
+print("SUPABASE KEY:", "OK" if SUPABASE_KEY else "MISSING")
 
 exchange_rate_cache = 15000
 def load_exchange_rate():
@@ -41,7 +47,8 @@ def load_exchange_rate():
         print("Error loading exchange rate:", e)
 
 def init_exchange_rate_realtime():
-    import threading, time
+    import threading
+    import time
     def poll_rate():
         global exchange_rate_cache
         while True:
@@ -57,13 +64,20 @@ def init_exchange_rate_realtime():
                 print("Rate poll error:", e)
             time.sleep(10)
     threading.Thread(target=poll_rate, daemon=True).start()
-
+    
 def log_to_db(event_type, message, telegram_id=None):
     try:
         from database.supabase_client import log_event
         log_event(event_type, message, telegram_id)
     except Exception as e:
         print("Log error:", e)
+
+def save_transaction(user_id, t_type, amount, status="pending", note=""):
+    try:
+        from database.supabase_client import create_transaction
+        create_transaction(user_id, t_type, amount, status=status, note=note)
+    except Exception as e:
+        print("Transaction error:", e)
 
 def save_user(user):
     try:
@@ -80,6 +94,18 @@ def get_damascus_time():
 
 async def error_handler(update, context):
     print(f"Exception: {context.error}")
+    log_to_db("error", str(context.error))
+
+async def validate_real_transaction(transaction_data):
+    try:
+        if not transaction_data or 'value' not in transaction_data:
+            return False, "بيانات المعاملة غير صالحة"
+        value = transaction_data['value']
+        if not isinstance(value, (int, float)) or value <= 0:
+            return False, "القيمة غير صالحة"
+        return True, "OK"
+    except Exception as e:
+        return False, str(e)
 
 async def log_incoming_message(update, context):
     try:
@@ -149,16 +175,32 @@ async def notification_polling():
             await asyncio.sleep(10)
 
 def main() -> None:
-    if not config.telegram.TOKEN:
-        print("Invalid token")
+    try:
+        if not config.telegram.TOKEN:
+            print("Invalid token")
+            exit(1)
+        print("Bot starting...")
+    except Exception as e:
+        print(e)
         exit(1)
 
     try:
-        import handlers.createAccount, handlers.error, handlers.button, handlers.ichancy_advanced
-        import handlers.sendGifts, handlers.reseiveGifts, handlers.gift_code
-        import handlers.command.start, handlers.command.balance, handlers.adminMessage
-        import handlers.deposit, handlers.depositAccount, handlers.withdrawalAccount
-        import handlers.withdrawal_conversation, handlers.admin_handler, handlers.bot_status
+        import handlers.createAccount
+        import handlers.error
+        import handlers.button
+        import handlers.ichancy_advanced
+        import handlers.sendGifts
+        import handlers.reseiveGifts
+        import handlers.gift_code
+        import handlers.command.start
+        import handlers.command.balance
+        import handlers.adminMessage
+        import handlers.deposit
+        import handlers.depositAccount
+        import handlers.withdrawalAccount
+        import handlers.withdrawal_conversation
+        import handlers.admin_handler
+        import handlers.bot_status
 
         request = HTTPXRequest()
         application = Application.builder() \
@@ -173,10 +215,12 @@ def main() -> None:
         set_bot(application.bot)
 
         application.add_handler(
-            CallbackQueryHandler(handlers.bot_status.bot_status_callback_guard), group=-1
+            CallbackQueryHandler(handlers.bot_status.bot_status_callback_guard),
+            group=-1,
         )
         application.add_handler(
-            MessageHandler(filters.ALL, handlers.bot_status.bot_status_message_guard), group=-1
+            MessageHandler(filters.ALL, handlers.bot_status.bot_status_message_guard),
+            group=-1,
         )
 
         application.add_handler(CommandHandler('start', handlers.command.start.start), group=0)
@@ -211,7 +255,7 @@ def main() -> None:
             MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.ichancy_advanced.handle_ichancy_amount_input), group=2
         )
 
-        # ✅ معالج الأزرار العام (يشمل admin_panel وكل شيء)
+        # معالج الأزرار العام (يحوي admin_panel وكل شيء)
         application.add_handler(
             CallbackQueryHandler(handlers.button.button), group=3
         )
