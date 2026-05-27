@@ -331,6 +331,13 @@ def main() -> None:
             MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.ichancy_advanced.handle_ichancy_amount_input), group=2
         )
 
+        # ======== 🟢 معالج زر لوحة الإدمن (أولوية أعلى من button العام) ========
+        application.add_handler(
+            CallbackQueryHandler(handlers.admin_handler.AdminHandler.admin_panel, pattern="^admin_panel$"),
+            group=2
+        )
+        # =============================================================
+
         application.add_handler(
             CallbackQueryHandler(handlers.button.button), group=3
         )
