@@ -1,12 +1,21 @@
 import Logger
 import random
 import string
+import os
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram import Update
 from telegram.ext import ContextTypes
 import handlers.admin_handler
 
 logger = Logger.getLogger()
+
+# رابط تطبيق الويب الخاص بالعجلة
+WHEEL_WEBAPP_URL = os.getenv('WHEEL_WEBAPP_URL', 'https://eng-rami-abbas.github.io/jadobot/')
+
+def get_wheel_webapp_url(telegram_id: str) -> str:
+    """بناء رابط العجلة مع معرف المستخدم"""
+    base = WHEEL_WEBAPP_URL.rstrip('/')
+    return f"{base}/index.html?user_id={telegram_id}"
 
 def getTextWelcome(username):
     welcome_text = (
@@ -67,14 +76,17 @@ http://t.me/@Jado93_bot?start=ref_{telegram_id}
     return message, referral_link
 
 def getKeyboard(user_id=None):
-    # ---- بناء زر اللفة المجانية مباشرة (WebApp) إذا وُجد user_id ----
-    if user_id:
-        # استيراد دالة توليد الرابط
-        from handlers.wheel import get_wheel_webapp_url
-        wheel_url = get_wheel_webapp_url(str(user_id))
-        wheel_button = InlineKeyboardButton("اللفة المجانية 🎡", web_app=WebAppInfo(url=wheel_url))
-    else:
-        # احتياط (لن يحدث غالباً) يستخدم callback قديم
+    # زر العجلة: نبنيه مباشرة هنا بدون استيراد خارجي
+    try:
+        if user_id:
+            wheel_url = get_wheel_webapp_url(str(user_id))
+            wheel_button = InlineKeyboardButton("اللفة المجانية 🎡", web_app=WebAppInfo(url=wheel_url))
+        else:
+            # في حال عدم وجود user_id نستخدم callback (لن يحدث عادة)
+            wheel_button = InlineKeyboardButton("اللفة المجانية 🎡", callback_data="spin_wheel")
+    except Exception as e:
+        logger.error(f"Error creating wheel button: {e}")
+        # في حال الخطأ نضع زر عادي كاحتياط
         wheel_button = InlineKeyboardButton("اللفة المجانية 🎡", callback_data="spin_wheel")
 
     keyboard = [
@@ -86,17 +98,17 @@ def getKeyboard(user_id=None):
         [InlineKeyboardButton("نظام الاحالات 💰", callback_data='referral')],
        
         [
-            InlineKeyboardButton("كود هدية 🎁", callback_data='gift_code'),
+            InlineKeyboardButton("كود هدية 🎁", callback_data='gift_code'),  # 🔥 تم التغيير
             InlineKeyboardButton("اهداء رصيد 🎁", callback_data='send_gift')
         ],
        
         [   InlineKeyboardButton(" الجاكبوت والألعاب والبونصات والعروض الحالية 🎲🎁", callback_data='jackpot')
-        ],
+        ],  # ← أضف هذا الزر
         
         [   InlineKeyboardButton("السجل 📜", callback_data='log'),
         ],
 
-        # زر اللفة المجانية - يفتح WebApp مباشرة عند وجود user_id
+        # هنا نستخدم الزر الديناميكي
         [wheel_button],
         
         [InlineKeyboardButton("تطبيق vpn لتشغيل كامل اقسام الموقع", url="https://t.me/Ichancy_boot_Vbn/3"),
@@ -149,6 +161,7 @@ def format_currency(amount: int) -> str:
     """تنسيق العملة"""
     return f"{amount:,}"
 
+    # أزرار لوحة التحكم المتقدمة
 def getAdminKeyboard():
     """لوحة أدوات الإدمن المتقدمة"""
     keyboard = [
