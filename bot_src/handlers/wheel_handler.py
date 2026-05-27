@@ -25,54 +25,17 @@ def get_wheel_webapp_url(telegram_id: str) -> str:
     sep = '&' if '?' in base else '?'
     return f"{base}{sep}{urlencode({'user_id': telegram_id})}"
 
+
 async def handle_spin_wheel(update, context):
-    """فتح واجهة العجلة المجانية بعد شحن اليوم."""
+    """فتح واجهة العجلة مباشرة – التحقق من الأهلية يتم داخل WebApp."""
     query = update.callback_query
     await query.answer()
 
     user_id = str(update.effective_user.id)
-    extra_spins = supa.get_wheel_extra_spins(user_id)
-
-    try:
-        last_spin = supa.get_wheel_last_spin(user_id)
-        if last_spin:
-            from datetime import datetime, timezone
-            import pytz
-            damascus = pytz.timezone("Asia/Damascus")
-            last_spin_time = datetime.fromisoformat(last_spin.replace("Z", "+00:00"))
-            if last_spin_time.tzinfo is None:
-                last_spin_time = last_spin_time.replace(tzinfo=timezone.utc)
-            last_local = last_spin_time.astimezone(damascus)
-            now_local = datetime.now(damascus)
-            if last_local.date() == now_local.date() and extra_spins <= 0:
-                await query.edit_message_text(
-                    "⏰ لقد استخدمت اللفة المجانية اليوم. تعود اللفة بعد شحن يوم جديد.",
-                    reply_markup=get_wheel_keyboard()
-                )
-                return
-    except Exception as e:
-        logger.error(f"Error checking wheel cooldown: {e}")
-
-    try:
-        if not supa.has_deposited_today(user_id) and extra_spins <= 0:
-            await query.edit_message_text(
-                "🔒 اللفة المجانية متاحة فقط بعد شحن اليوم نفسه. قم بعمل إيداع واحد اليوم لتحصل على لفة مجانية.",
-                reply_markup=get_wheel_keyboard()
-            )
-            return
-    except Exception as e:
-        logger.error(f"Error checking daily deposit eligibility: {e}")
-        await query.edit_message_text(
-            "⚠️ حدث خطأ أثناء التحقق من صلاحية اللفة. حاول مرة أخرى لاحقاً.",
-            reply_markup=get_wheel_keyboard()
-        )
-        return
-
     wheel_url = get_wheel_webapp_url(user_id)
-    keyboard = [
-        [InlineKeyboardButton("🎰 اضغط هنا للدوران", web_app=WebAppInfo(url=wheel_url))],
-        [InlineKeyboardButton("🔙 رجوع", callback_data="back_to_menu")]
-    ]
+
+    # زر واحد فقط لفتح العجلة (WebApp)
+    keyboard = [[InlineKeyboardButton("🎰 افتح العجلة", web_app=WebAppInfo(url=wheel_url))]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     try:
@@ -88,13 +51,16 @@ async def handle_spin_wheel(update, context):
             parse_mode="Markdown"
         )
 
+
+# لا حاجة لـ get_wheel_keyboard الآن، لكن يمكن الاحتفاظ بها للتوافق مع أجزاء أخرى
 def get_wheel_keyboard():
-    """لوحة مفاتيح العجلة"""
+    """لوحة مفاتيح العجلة (قديمة - للاستخدام في أجزاء أخرى إن وجدت)."""
     keyboard = [
         [InlineKeyboardButton("🎰 لفة مجانية", callback_data="spin_wheel")],
         [InlineKeyboardButton("🔙 رجوع", callback_data="back_to_menu")]
     ]
     return InlineKeyboardMarkup(keyboard)
+
 
 async def handle_web_app_data(update, context):
     """إشعار المستخدم بنتيجة الروليت (الجائزة تُصرف من API السيرفر)."""
