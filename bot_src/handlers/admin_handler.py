@@ -312,9 +312,6 @@ class AdminHandler:
     @staticmethod
     def admin_panel_menu():
         """لوحة تحكم الإدمن الرئيسية"""
-        # عرض حالة البوت
-        bot_status = "🟢 نشط" if AdminHandler.BOT_STATUS else "🔴 متوقف للصيانة"
-        
         keyboard = [
             [
                 InlineKeyboardButton("👥 إدارة المستخدمين", callback_data="admin_users"),
@@ -326,7 +323,7 @@ class AdminHandler:
             ],
             [
                 InlineKeyboardButton("📢 إرسال إشعار", callback_data="admin_broadcast"),
-                InlineKeyboardButton("📈 الإحصائيات والتحليلات", callback_data="admin_analytics")  # أضفنا هذا الزر
+                InlineKeyboardButton("📈 الإحصائيات والتحليلات", callback_data="admin_analytics")
             ],
             [
                 InlineKeyboardButton("⚙️ إعدادات النظام", callback_data="admin_settings"),
@@ -344,30 +341,24 @@ class AdminHandler:
     
     @staticmethod
     async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """لوحة تحكم الإدمن الرئيسية"""
+        """لوحة تحكم الإدمن الرئيسية – ترسل رسالة جديدة لتجنب أخطاء التعديل"""
         user_id = str(update.effective_user.id)
         
+        # صلاحية الدخول
         if not AdminHandler.is_admin(user_id):
-            if hasattr(update, 'callback_query') and update.callback_query:
-                await update.callback_query.answer("❌ ليس لديك صلاحية الوصول إلى لوحة الإدمن", show_alert=True)
-            else:
-                await update.message.reply_text("❌ ليس لديك صلاحية الوصول إلى لوحة الإدمن")
+            await update.callback_query.answer("❌ ليس لديك صلاحية الوصول إلى لوحة الإدمن", show_alert=True)
             return
         
-        # عرض حالة البوت
-        bot_status = "🟢 نشط" if AdminHandler.BOT_STATUS else "🔴 متوقف للصيانة"
-        
-        # الحصول على إحصائيات سريعة من نظام التحليلات
+        # جلب إحصائيات سريعة
         try:
             today_stats = analytics_system.get_daily_stats()
-            total_users = len(analytics_system.data["users"])
+            total_users = len(analytics_system.data.get("users", {}))
             top_commands = analytics_system.get_most_used_commands(3)
-            
             stats_text = f"""
 🔧 **لوحة تحكم الإدمن**
 
 📊 **حالة النظام:**
-🤖 حالة البوت: {bot_status}
+🤖 حالة البوت: {"🟢 نشط" if AdminHandler.BOT_STATUS else "🔴 متوقف للصيانة"}
 👥 إجمالي المستخدمين: {total_users}
 📅 المستخدمون النشطون اليوم: {today_stats['active_users']}
 🆕 مستخدمون جدد اليوم: {today_stats['new_users']}
@@ -386,49 +377,22 @@ class AdminHandler:
 🔧 **لوحة تحكم الإدمن**
 
 مرحباً بك في لوحة تحكم الإدمن.
-🤖 حالة البوت: {bot_status}
+🤖 حالة البوت: {"🟢 نشط" if AdminHandler.BOT_STATUS else "🔴 
+البوت في حالة صيانة لفترة قصيرة بسبب الصيانة العامة ضمن الموقع ... يرجى الانتظار و عدم مراسلة الدعم 
+شاكرين صبركم "}
 
 اختر العملية المطلوبة من القائمة:
             """
         
-        if hasattr(update, 'callback_query') and update.callback_query:
-            await update.callback_query.edit_message_text(
-                stats_text,
-                reply_markup=AdminHandler.admin_panel_menu(),
-                parse_mode='Markdown'
-            )
-        else:
-            await update.message.reply_text(
-                stats_text,
-                reply_markup=AdminHandler.admin_panel_menu(),
-                parse_mode='Markdown'
-            )
-    
-    @staticmethod
-    async def admin_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """قائمة إعدادات النظام"""
-        keyboard = [
-            [
-                InlineKeyboardButton("🤖 إدارة حالة البوت", callback_data="admin_manage_bot_status"),
-            ],
-            
-            [
-                InlineKeyboardButton("🔙 العودة للوحة الإدمن", callback_data="admin_panel")
-            ]
-        ]
-        
-        await update.callback_query.edit_message_text(
-            "⚙️ **إعدادات النظام**\n\nاختر الإعداد الذي تريد تعديله:",
-            reply_markup=InlineKeyboardMarkup(keyboard),
+        # ✅ إرسال رسالة جديدة بدلاً من تعديل القديمة
+        await update.callback_query.message.reply_text(
+            stats_text,
+            reply_markup=AdminHandler.admin_panel_menu(),
             parse_mode='Markdown'
         )
     
-    @staticmethod
-    async def manage_bot_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """إدارة حالة البوت (تشغيل/إيقاف)"""
-        current_status = "🟢 نشط" if AdminHandler.BOT_STATUS else "🔴 متوقف للصيانة"
-        
-        keyboard = [
+    # ... باقي الدوال بدون تغيير ...
+    keyboard = [
             [
                 InlineKeyboardButton("🟢 تشغيل البوت", callback_data="admin_bot_start"),
                 InlineKeyboardButton("🔴 إوقف البوت", callback_data="admin_bot_stop")
