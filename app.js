@@ -21,10 +21,15 @@ class JadoWheel {
         this.tg = window.Telegram?.WebApp;
         this.user = null;
 
+        // Supabase client
+        this.supabase = null;
+        this.eligibilityChecked = false;
+        this.canSpinToday = false;
+
         this.init();
     }
 
-    init() {
+    async init() {
         if (this.tg) {
             this.tg.ready();
             this.tg.expand();
@@ -35,7 +40,95 @@ class JadoWheel {
 
         this.setupLights();
         this.drawWheel();
-        this.checkSpinStatus();
+        this.spinBtn.disabled = true; // معطّل حتى التحقق
+
+        // تهيئة Supabase والتحقق من الأهلية
+        await this.initSupabase();
+        await this.checkEligibility();
+    }
+
+    // تهيئة Supabase
+    async initSupabase() {
+        if (!window.SUPABASE_CONFIG || !window.SUPABASE_CONFIG.URL || window.SUPABASE_CONFIG.URL === 'https://your-project-id.supabase.co') {
+            console.warn('Supabase config not set. Skipping eligibility check.');
+            return;
+        }
+        try {
+            const { createClient } = supabase; // من مكتبة Supabase المضافة
+            this.supabase = createClient(window.SUPABASE_CONFIG.URL, window.SUPABASE_CONFIG.ANON_KEY);
+            console.log('Supabase initialized');
+        } catch (e) {
+            console.error('Supabase init error:', e);
+        }
+    }
+
+    // التحقق من شرط الإيداع وعدم وجود تدويرة اليوم
+    async checkEligibility() {
+        if (!this.supabase || !this.user?.id) {
+            // لا يمكن التحقق، نسمح بالتدوير (لأغراض التطوير)
+            this.enableSpin();
+            return;
+        }
+
+        try {
+            const userId = this.user.id.toString();
+
+            // 1. التحقق من وجود إيداع واحد على الأقل للمستخدم
+            const { data: deposit, error: depError } = await this.supabase
+                .from('deposits')
+                .select('id')
+                .eq('user_id', userId)
+                .limit(1);
+
+            if (depError) throw depError;
+            if (!deposit || deposit.length === 0) {
+                // لا يوجد إيداع
+                this.spinBtn.disabled = true;
+                this.showSpinMessage('يجب عليك الإيداع أولاً لاستخدام العجلة.');
+                return;
+            }
+
+            // 2. التحقق من عدم وجود تدويرة مسجلة اليوم
+            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+            const { data: todaySpin, error: spinError } = await this.supabase
+                .from('spins')
+                .select('id')
+                .eq('user_id', userId)
+                .eq('spin_date', today)
+                .limit(1);
+
+            if (spinError) throw spinError;
+            if (todaySpin && todaySpin.length > 0) {
+                this.spinUsed = true;
+                this.spinBtn.disabled = true;
+                this.showSpinMessage('لقد استخدمت تدويرتك اليوم. عد غداً!');
+                return;
+            }
+
+            // كل الشروط محققة
+            this.spinUsed = false;
+            this.canSpinToday = true;
+            this.enableSpin();
+
+        } catch (error) {
+            console.error('Eligibility check failed:', error);
+            // في حالة الخطأ نسمح بالتدوير (للتجربة)
+            this.enableSpin();
+        }
+    }
+
+    enableSpin() {
+        this.spinBtn.disabled = false;
+        this.eligibilityChecked = true;
+    }
+
+    showSpinMessage(msg) {
+        // عرض رسالة للمستخدم (مؤقت)
+        if (this.tg) {
+            this.tg.showAlert(msg);
+        } else {
+            alert(msg);
+        }
     }
 
     setupLights() {
@@ -71,13 +164,10 @@ class JadoWheel {
         ctx.clearRect(0, 0, size, size);
 
         sections.forEach((section, i) => {
-            // Section angles: each section spans 45°
-            // Section 0: centered at 0° (top), spans -22.5° to +22.5°
             const centerAngle = i * sectionAngle - Math.PI / 2;
             const startAngle = centerAngle - sectionAngle / 2;
             const endAngle = centerAngle + sectionAngle / 2;
 
-            // Radial gradient
             const grad = ctx.createRadialGradient(cx, cy, radius * 0.15, cx, cy, radius);
             grad.addColorStop(0, section.colorDark);
             grad.addColorStop(0.6, section.color);
@@ -90,18 +180,14 @@ class JadoWheel {
             ctx.fillStyle = grad;
             ctx.fill();
 
-            // Gold divider lines between sections
             ctx.strokeStyle = '#D4AF37';
             ctx.lineWidth = 3;
             ctx.stroke();
 
-            // ===== DRAW LABEL ON WHEEL =====
-            // Position text at 65% of radius from center
             const textRadius = radius * 0.65;
             const textX = cx + Math.cos(centerAngle) * textRadius;
             const textY = cy + Math.sin(centerAngle) * textRadius;
 
-            // Draw the label from config.js ON the wheel
             ctx.font = 'bold 28px "Cairo", Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -112,14 +198,12 @@ class JadoWheel {
             ctx.shadowBlur = 0;
         });
 
-        // Outer gold ring
         ctx.beginPath();
         ctx.arc(cx, cy, radius, 0, Math.PI * 2);
         ctx.strokeStyle = '#D4AF37';
         ctx.lineWidth = 7;
         ctx.stroke();
 
-        // Inner circle (behind SPIN button)
         ctx.beginPath();
         ctx.arc(cx, cy, radius * 0.20, 0, Math.PI * 2);
         ctx.fillStyle = '#1a0a2e';
@@ -129,23 +213,26 @@ class JadoWheel {
         ctx.stroke();
     }
 
-    checkSpinStatus() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const canSpin = urlParams.get('can_spin') !== 'false';
-        if (!canSpin) {
-            this.spinUsed = true;
-            this.spinBtn.disabled = true;
-        }
-    }
-
-    // ===== SPIN - FIXED: Correct landing on exact section =====
-    spinWheel() {
+    // ===== SPIN =====
+    async spinWheel() {
         if (this.isSpinning) return;
-        if (this.spinUsed) {
+        if (!this.eligibilityChecked || !this.canSpinToday) {
             this.showResult({
                 icon: '⚠️',
                 label: 'تنبيه',
-                value: 'لقد استخدمت تدويرتك اليوم! عد غداً بعد الإيداع.',
+                value: 'لا يمكنك التدوير الآن. تأكد من الإيداع ومن أنك لم تستخدم تدويرتك اليوم.',
+                isAlert: true
+            });
+            return;
+        }
+
+        // تسجيل التدويرة في قاعدة البيانات قبل بدء الدوران
+        const spinRegistered = await this.registerSpin();
+        if (!spinRegistered) {
+            this.showResult({
+                icon: '⚠️',
+                label: 'خطأ',
+                value: 'حدث خطأ أثناء محاولة تسجيل التدويرة. حاول مجدداً.',
                 isAlert: true
             });
             return;
@@ -154,35 +241,22 @@ class JadoWheel {
         this.isSpinning = true;
         this.spinBtn.disabled = true;
         this.spinUsed = true;
+        this.canSpinToday = false; // منع الضغط مرة أخرى
 
         if (this.soundEnabled && this.spinSound) {
             this.spinSound.currentTime = 0;
             this.spinSound.play().catch(() => {});
         }
 
-        // 1. Pick result FIRST (before animation)
         const result = this.calculateResult();
         const targetSection = result.section;
         const targetAngle = targetSection.angle;
-
-        // 2. Calculate exact rotation to land on target section
-        // 
-        // Pointer is FIXED at top (0°).
-        // Wheel rotates CLOCKWISE by R degrees.
-        // A section at wheel angle A will appear at screen position: (A + R) mod 360
-        // We want: (targetAngle + R) mod 360 = 0  (pointer at top)
-        // So: R = (360 - targetAngle) mod 360, plus full rotations for effect
-        //
-        // Example: target = 20000 (section 1, angle 45°)
-        //   R = 360 - 45 = 315° + N*360
-        //   After rotation: section at 45° moves to 45+315 = 360° = 0° (top) ✓
 
         const fullRotations = CONFIG.MIN_SPINS + Math.floor(Math.random() * (CONFIG.MAX_SPINS - CONFIG.MIN_SPINS + 1));
         const adjustment = (360 - targetAngle) % 360;
         const totalRotation = fullRotations * 360 + adjustment;
         const finalRotation = this.currentRotation + totalRotation;
 
-        // 3. Animate
         const duration = CONFIG.SPIN_DURATION;
         const startTime = performance.now();
         const startRot = this.currentRotation;
@@ -191,18 +265,13 @@ class JadoWheel {
         const animate = (now) => {
             const elapsed = now - startTime;
             const progress = Math.min(elapsed / duration, 1);
-
-            // Ease-out cubic for realistic deceleration
             const ease = 1 - Math.pow(1 - progress, 3);
             const currentAngle = startRot + (finalRotation - startRot) * ease;
 
             this.wheel.style.transform = 'rotate(' + currentAngle + 'deg)';
 
-            // Tick sound when passing section boundaries
             if (this.soundEnabled && this.tickSound) {
                 const secAngle = 360 / CONFIG.SECTIONS.length;
-                // Which section is at the pointer now?
-                // Pointer sees: (360 - rotation) mod 360
                 const pointerAngle = (360 - (currentAngle % 360)) % 360;
                 const currentSec = Math.floor(pointerAngle / secAngle);
                 if (currentSec !== lastSection) {
@@ -217,7 +286,6 @@ class JadoWheel {
             if (progress < 1) {
                 requestAnimationFrame(animate);
             } else {
-                // Verify correct landing
                 const finalPointerAngle = (360 - (finalRotation % 360)) % 360;
                 const landedIndex = Math.floor(finalPointerAngle / 45);
                 console.log('Target:', targetSection.id, 'Landed:', landedIndex, 'Label:', CONFIG.SECTIONS[landedIndex].label);
@@ -227,6 +295,42 @@ class JadoWheel {
         };
 
         requestAnimationFrame(animate);
+    }
+
+    // تسجيل التدويرة في Supabase
+    async registerSpin() {
+        if (!this.supabase || !this.user?.id) return true; // إذا لم يتوفر Supabase، نسمح (للتطوير)
+
+        try {
+            const userId = this.user.id.toString();
+            const today = new Date().toISOString().split('T')[0];
+
+            const { error } = await this.supabase
+                .from('spins')
+                .insert([
+                    {
+                        user_id: userId,
+                        spin_date: today,
+                        created_at: new Date().toISOString()
+                    }
+                ]);
+
+            if (error) {
+                console.error('Spin registration error:', error);
+                // ربما الخطأ بسبب انتهاك قيد التفرد (موجود بالفعل)
+                if (error.code === '23505') { // unique violation
+                    this.spinUsed = true;
+                    this.canSpinToday = false;
+                    this.spinBtn.disabled = true;
+                    this.showSpinMessage('لقد استخدمت تدويرتك اليوم مسبقاً.');
+                }
+                return false;
+            }
+            return true;
+        } catch (e) {
+            console.error('Register spin failed:', e);
+            return false;
+        }
     }
 
     calculateResult() {
@@ -262,10 +366,9 @@ class JadoWheel {
             this.winSound.play().catch(() => {});
         }
 
-        // Show result using the SAME label from config.js
         this.showResult({
             icon: this.getResultIcon(result.section.type),
-            label: result.section.label,  // ← FROM CONFIG.JS (same as on wheel)
+            label: result.section.label,
             value: this.getResultDescription(result.section),
             isAlert: false
         });
@@ -289,7 +392,6 @@ class JadoWheel {
     }
 
     getResultDescription(section) {
-        // Message uses the SAME label from config.js
         switch (section.type) {
             case 'money': return 'مبروك! ربحت ' + section.label + '!';
             case 'bonus': return 'مبروك! ' + section.label + ' على إيداعك القادم!';
@@ -318,7 +420,7 @@ class JadoWheel {
         const data = {
             action: 'wheel_spin_complete',
             result_type: result.section.type,
-            result_label: result.section.label,  // ← Same label from config.js
+            result_label: result.section.label,
             result_value: result.section.value,
             user_id: this.user?.id,
             username: this.user?.username,
