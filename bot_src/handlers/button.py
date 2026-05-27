@@ -125,21 +125,16 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # =========================
     elif data == "agree":
         try:
-            # Save user to Supabase only
             supa.upsert_user(
                 telegram_id=user_id,
                 username=update.effective_user.username,
                 first_name=update.effective_user.first_name or "",
                 last_name=update.effective_user.last_name or ""
             )
-
-            # Send success message
             await query.message.edit_text("✅ تم قبول الشروط، اضغط /start للمتابعة")
-            
         except Exception as e:
             print(f"Error in terms approval: {e}")
             await query.message.edit_text("❌ حدث خطأ، يرجى المحاولة مرة أخرى")
-        
         return
 
     elif data == "reject":
@@ -162,7 +157,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     elif data in ['jackpot', 'casino_games', 'sports_betting', 'betting_history',
                   'promotions', 'vip_program', 'live_support', 'open_ichancy'] or \
          data.startswith(('jackpot_', 'casino_', 'sports_', 'vip_', 'gaming_')):
-
         await handlers.gaming_handler.GamingHandler.handle_gaming_menu_callback(update, context)
 
     elif data == 'log' or data.startswith('log_'):
@@ -186,6 +180,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     elif data == 'spin_wheel':
         import handlers.wheel_handler
         await handlers.wheel_handler.handle_spin_wheel(update, context)
+
+    # ✅ فتح لوحة الإدمن مباشرة (أولوية)
+    elif data == 'admin_panel':
+        await handlers.admin_handler.AdminHandler.admin_panel(update, context)
+        return
 
     elif data == 'ichancy':
         await handlers.ichancy.handle_ichancy(update, context)
@@ -255,11 +254,9 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             transaction_id = '_'.join(parts[2:])
             await handlers.transactions.reject_transaction(query, transaction_id, transaction_type)
 
-    elif data == 'admin_panel' or data.startswith('admin_'):
-        if not (data.startswith('admin_approve_') or
-                data.startswith('admin_reject_') or
-                data.startswith('admin_analytics_')):
-            await handlers.admin_handler.AdminHandler.handle_admin_callback(update, context)
+    # باقي أزرار الإدمن (غير admin_panel نفسها)
+    elif data.startswith('admin_'):
+        await handlers.admin_handler.AdminHandler.handle_admin_callback(update, context)
 
     elif data.startswith('maintenance_'):
         await handlers.maintenance_scheduler.MaintenanceScheduler.handle_maintenance_callback(update, context)
