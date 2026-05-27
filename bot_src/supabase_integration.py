@@ -248,6 +248,17 @@ def insert_deposit(
                 logger.error(f"⚠️ Failed to log to transaction_logs: {log_err}")
                 logger.error(f"⚠️ Error type: {type(log_err)}")
 
+            # 🔥 إدراج في جدول deposits للتحقق من أهلية عجلة الحظ
+            try:
+                get_client().table("deposits").insert({
+                    "user_id": str(telegram_id),
+                    "amount": amount_syp,
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }).execute()
+                logger.info(f"✅ Inserted into deposits table for user {telegram_id}")
+            except Exception as dep_err:
+                logger.error(f"⚠️ Failed to insert into deposits table: {dep_err}")
+
             return str(op_num)
 
         logger.warning("⚠️ No data returned from Supabase insert")
