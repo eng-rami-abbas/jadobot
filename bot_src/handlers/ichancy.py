@@ -10,35 +10,29 @@ load_dotenv()
 
 logger = Logger.getLogger()
 
-# Load PARENT_ID from environment or use default
 PARENT_ID = os.getenv('PARENT_ID', '2730826')
 EXCHANGE_RATE = 50000
 
-# إعدادات API
-API_TIMEOUT = 15  # تقليل التايم آوت إلى 15 ثانية
-MAX_RETRIES = 2   # عدد المحاولات
+API_TIMEOUT = 15
+MAX_RETRIES = 2
 
-# إعدادات نظام الإحالة
-REFERRAL_PERCENTAGE = 4  # نسبة الربح من الإحالة (4%)
+REFERRAL_PERCENTAGE = 4
 REFERRAL_BONUS = {
-    5: 5000,    # مكافأة عند 5 إحالات
-    10: 15000,  # مكافأة عند 10 إحالات
-    20: 30000   # مكافأة عند 20 إحالة
+    5: 5000,
+    10: 15000,
+    20: 30000
 }
-MIN_DEPOSIT_FOR_REFERRAL = 10000  # الحد الأدنى للإيداع لاحتساب الإحالة
+MIN_DEPOSIT_FOR_REFERRAL = 10000
 
-# إعدادات المعاملات
-MIN_DEPOSIT = 25000       # الحد الأدنى للإيداع
-MAX_DEPOSIT = 10000000    # الحد الأقصى للإيداع
-MIN_WITHDRAWAL = 10000    # الحد الأدنى للسحب
-MAX_WITHDRAWAL = 5000000  # الحد الأقصى للسحب
+MIN_DEPOSIT = 25000
+MAX_DEPOSIT = 10000000
+MIN_WITHDRAWAL = 10000
+MAX_WITHDRAWAL = 5000000
 
-# إعدادات نظام الألعاب
-JACKPOT_CONTRIBUTION_RATE = 0.01  # 1% من كل رهان يذهب للجاكبوت
-MIN_JACKPOT = 100000  # الحد الأدنى للجاكبوت
-JACKPOT_DRAW_TIME = "00:00"  # وقت سحب الجاكبوت اليومي
+JACKPOT_CONTRIBUTION_RATE = 0.01
+MIN_JACKPOT = 100000
+JACKPOT_DRAW_TIME = "00:00"
 
-# مستويات VIP
 VIP_LEVELS = {
     "bronze": 5000,
     "silver": 20000,
@@ -46,7 +40,6 @@ VIP_LEVELS = {
     "diamond": 100000
 }
 
-# مكافآت VIP
 VIP_BENEFITS = {
     "bronze": "5% كاش باك، مكافأة شهرية، دعم محسن",
     "silver": "10% كاش باك، مكافآت شهرية، دعم سريع",
@@ -54,20 +47,17 @@ VIP_BENEFITS = {
     "diamond": "مدير حساب شخصي، مكافآت يومية، حدود سحب عالية"
 }
 
-# إعدادات النسخ الاحتياطي
-BACKUP_SCHEDULE = "02:00"  # 2 صباحاً
+BACKUP_SCHEDULE = "02:00"
 BACKUP_RETENTION_DAYS = 30
 BACKUP_PATH = "backups/"
 
-# إعدادات المراقبة
-MONITORING_INTERVAL = 300  # 5 دقائق
+MONITORING_INTERVAL = 300
 ALERT_THRESHOLDS = {
-    'memory': 80,  # 80%
-    'cpu': 70,     # 70%
-    'disk': 85     # 85%
+    'memory': 80,
+    'cpu': 70,
+    'disk': 85
 }
 
-# إعدادات الإشعارات
 NOTIFICATION_TYPES = {
     'transaction': '💰 معاملة جديدة',
     'withdrawal': '💸 طلب سحب',
@@ -76,8 +66,7 @@ NOTIFICATION_TYPES = {
     'alert': '🚨 تنبيه'
 }
 
-# إعدادات التحليلات
-ANALYTICS_REFRESH = 3600  # ساعة واحدة
+ANALYTICS_REFRESH = 3600
 
 async def handle_ichancy(update, context):
     query = update.callback_query
@@ -85,11 +74,23 @@ async def handle_ichancy(update, context):
 
     user_id = str(update.effective_user.id)
 
-    await query.edit_message_text(
-        "🎮 **نظام iChancy**\n\nاختر العملية:",
-        reply_markup=get_ichancy_keyboard(user_id),
-        parse_mode="Markdown"
-    )
+    try:
+        await query.edit_message_text(
+            "🎮 **نظام iChancy**
+
+اختر العملية:",
+            reply_markup=get_ichancy_keyboard(user_id),
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logger.error(f"Error in handle_ichancy: {e}")
+        await query.message.reply_text(
+            "🎮 **نظام iChancy**
+
+اختر العملية:",
+            reply_markup=get_ichancy_keyboard(user_id),
+            parse_mode="Markdown"
+        )
 
 
 def get_ichancy_account(user_id):
@@ -99,7 +100,6 @@ def get_ichancy_account(user_id):
             return account
     except Exception:
         pass
-
     return None
 
 
@@ -136,13 +136,9 @@ async def ichancy_create(update, context):
     context.user_data.pop('temp_username', None)
 
     try:
-        await query.edit_message_text(
-            "🆕 أدخل اسم المستخدم للحساب:"
-        )
+        await query.edit_message_text("🆕 أدخل اسم المستخدم للحساب:")
     except Exception:
-        await query.message.reply_text(
-            "🆕 أدخل اسم المستخدم للحساب:"
-        )
+        await query.message.reply_text("🆕 أدخل اسم المستخدم للحساب:")
 
 async def ichancy_deposit(update, context):
     query = update.callback_query
@@ -158,13 +154,19 @@ async def ichancy_deposit(update, context):
     context.user_data['ichancy_state'] = 'ichancy_deposit'
 
     await query.edit_message_text(
-        "💰 **إيداع iChancy**\n\nأرسل المبلغ:",
+        "💰 **إيداع iChancy**
+
+أرسل المبلغ:",
         parse_mode="Markdown"
     )
 
 async def handle_deposit_amount(update, context):
     user_id = str(update.effective_user.id)
-    amount = float(update.message.text)
+    try:
+        amount = float(update.message.text)
+    except ValueError:
+        await update.message.reply_text("❌ يرجى إدخال رقم صحيح")
+        return
 
     account = get_ichancy_account(user_id)
 
@@ -177,7 +179,6 @@ async def handle_deposit_amount(update, context):
         return
 
     api = iChancyAPI()
-
     result = api.deposit_to_player_by_username(
         username=account["username"],
         amount=amount
@@ -199,20 +200,20 @@ async def ichancy_withdraw(update, context):
         await query.edit_message_text("❌ يجب أن تنشئ حساب أولا")
         return
 
-    await query.edit_message_text(
-        "💸 أرسل المبلغ الذي تريد سحبه:",
-    )
-
+    await query.edit_message_text("💸 أرسل المبلغ الذي تريد سحبه:")
     context.user_data['ichancy_state'] = 'ichancy_withdraw'
 
 async def handle_withdraw_amount(update, context):
     user_id = str(update.effective_user.id)
-    amount = float(update.message.text)
+    try:
+        amount = float(update.message.text)
+    except ValueError:
+        await update.message.reply_text("❌ يرجى إدخال رقم صحيح")
+        return
 
     account = get_ichancy_account(user_id)
 
     api = iChancyAPI()
-
     result = api.withdraw_from_player_by_username(
         username=account["username"] if account else None,
         amount=amount
@@ -234,21 +235,19 @@ async def ichancy_deposit_all(update, context):
         await query.edit_message_text("❌ يجب أن تنشئ حساب أولا")
         return
 
-    # Get actual balance from iChancy API
     api = iChancyAPI()
     balance_result = api.get_player_balance_by_username(account["username"])
-    
+
     if not balance_result['success']:
         await query.edit_message_text("❌ لا يمكن جلب الرصيد")
         return
-        
+
     balance = balance_result.get('balance', 0)
 
     if balance <= 0:
         await query.edit_message_text("❌ لا يوجد رصيد")
         return
 
-    # Withdraw all balance to agent
     result = api.withdraw_from_player_by_username(
         username=account["username"],
         amount=balance
@@ -270,50 +269,53 @@ async def ichancy_balance(update, context):
         await query.edit_message_text("❌ يجب أن تنشئ حساب أولا")
         return
 
-    # Get actual balance from iChancy API
     api = iChancyAPI()
     balance_result = api.get_player_balance_by_username(account["username"])
-    
+
     if balance_result['success']:
         balance = balance_result.get('balance', 0)
     else:
         balance = 0
 
-    await query.edit_message_text(
-        f"📊 **رصيدك الحالي:**\n\n💰 {balance}",
-        parse_mode="Markdown",
-        reply_markup=get_ichancy_keyboard(user_id)
-    )
+    try:
+        await query.edit_message_text(
+            f"📊 **رصيدك الحالي:**
+
+💰 {balance}",
+            parse_mode="Markdown",
+            reply_markup=get_ichancy_keyboard(user_id)
+        )
+    except Exception as e:
+        logger.error(f"Error in ichancy_balance: {e}")
+        await query.message.reply_text(
+            f"📊 **رصيدك الحالي:**
+
+💰 {balance}",
+            parse_mode="Markdown",
+            reply_markup=get_ichancy_keyboard(user_id)
+        )
 
 async def handle_ichancy_text(update, context):
     user_id = update.effective_user.id
     text = update.message.text
     state = context.user_data.get('ichancy_state')
 
-    # 1. استقبال username
     if state == "ichancy_wait_username":
         context.user_data['temp_username'] = text
         context.user_data['ichancy_state'] = "ichancy_wait_password"
-
-        await update.message.reply_text(
-            "🔑 الآن أدخل كلمة مرور (8 أحرف على الأقل):"
-        )
+        await update.message.reply_text("🔑 الآن أدخل كلمة مرور (8 أحرف على الأقل):")
         return
 
-    # 2. استقبال password + API
     if state == "ichancy_wait_password":
-
         if len(text) < 8:
-            await update.message.reply_text("❌ كلمة المرور قصيرة، يجب أ تكون 8 أحرف على الأقل")
+            await update.message.reply_text("❌ كلمة المرور قصيرة، يجب أن تكون 8 أحرف على الأقل")
             return
 
         username = context.user_data.get("temp_username")
-
         password = text
         email = f"{user_id}@bot.com"
 
         api = iChancyAPI()
-
         res = api.register_player(
             username=username,
             password=password,
@@ -321,10 +323,8 @@ async def handle_ichancy_text(update, context):
         )
 
         if res and res.get("success"):
-            # Get player ID from registration response
             player_id = res.get('player_id')
             if not player_id:
-                # Fallback: try to get player ID
                 player_id = api.get_player_id_by_username(username)
 
             context.user_data['ichancy_account'] = username
@@ -359,22 +359,22 @@ async def delete_account_handler(update: Update, context: ContextTypes.DEFAULT_T
     await query.answer()
 
     telegram_id = str(query.from_user.id)
-
     account = get_ichancy_account(telegram_id)
 
     if not account or not account.get("username"):
         await query.answer("❌ لا يوجد حساب", show_alert=True)
         return
 
-    # حذف من Supabase فقط
     try:
         supa.get_client().table("users_ichancy_details").delete().eq("telegram_id", telegram_id).execute()
     except Exception as e:
         logger.warning(f"Could not delete ichancy details from Supabase: {e}")
 
-    await query.edit_message_text("✅ تم حذف الحساب بنجاح")
+    try:
+        await query.edit_message_text("✅ تم حذف الحساب بنجاح")
+    except Exception:
+        await query.message.reply_text("✅ تم حذف الحساب بنجاح")
 
-    # إعادة عرض القائمة (مهم)
     await query.message.reply_text(
         "🎮 القائمة:",
         reply_markup=get_ichancy_keyboard(telegram_id)
