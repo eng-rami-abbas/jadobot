@@ -213,8 +213,9 @@ class ReferralHandler:
                 "👥 **قائمة أحالتي**\n\n"
                 "📭 لا توجد إحالات حتى الآن\n\n"
                 "🔗 شارك رابط الإحالة لبدء الربح!",
-                reply_markup=reply_markup,
-
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 رجوع", callback_data="referral")]
+                ]),
                 parse_mode='Markdown'
             )
         elif data == 'referral_contest':
