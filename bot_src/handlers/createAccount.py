@@ -4,6 +4,7 @@ from services.iChancyAPI import iChancyAPI
 import random, string, asyncio
 from datetime import datetime
 import handlers.ichancy
+from handlers.ichancy import PARENT_ID
 import supabase_integration as supa
 import Logger
 
@@ -75,7 +76,7 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
         email = context.user_data.get('email')
 
         logger.info(f"Creating account for user {telegram_user_id}: {name}")
-        logger.info(f"Email: {email}, using parent_id: {handlers.ichancy.PARENT_ID}")
+        logger.info(f"Email: {email}, using parent_id: {PARENT_ID}")
 
         api = iChancyAPI()
 
@@ -86,7 +87,7 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
             username=name,
             password=password,
             email=email,
-            parent_id=handlers.ichancy.PARENT_ID
+            parent_id=PARENT_ID
         )
 
         logger.info("===== REGISTER RESPONSE START =====")
