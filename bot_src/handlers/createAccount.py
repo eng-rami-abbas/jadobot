@@ -141,18 +141,11 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
 
             # MESSAGE SUCCESS
             success_message = (
-                f"✅ تم إنشاء الحساب بنجاح!
-
-"
-                f"👤 الحساب: {name}
-"
-                f"🔒 كلمة السر: {password}
-"
-                f"📧 الإيميل: {email}
-"
-                f"🆔 رقم اللاعب: {player_id if player_id else 'قيد المعالجة'}
-
-"
+                f"✅ تم إنشاء الحساب بنجاح!\n\n"
+                f"👤 الحساب: {name}\n"
+                f"🔒 كلمة السر: {password}\n"
+                f"📧 الإيميل: {email}\n"
+                f"🆔 رقم اللاعب: {player_id if player_id else 'قيد المعالجة'}\n\n"
                 f"رابط الدخول: https://www.ichancy.com/ar"
             )
 
@@ -169,37 +162,24 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
 
             if 'Authentication failed' in error_msg:
                 user_error = (
-                    "❌ خطأ في الاتصال بخوادم ichancy
-
-"
-                    "السبب المحتمل:
-"
-                    "• بيانات الدخول غير صحيحة
-"
-                    "• تم تعطيل الحساب
-"
-                    "• مشكلة في الاتصال
-
-"
-                    "الحل:
-"
+                    "❌ خطأ في الاتصال بخوادم ichancy\n\n"
+                    "السبب المحتمل:\n"
+                    "• بيانات الدخول غير صحيحة\n"
+                    "• تم تعطيل الحساب\n"
+                    "• مشكلة في الاتصال\n\n"
+                    "الحل:\n"
                     "تواصل مع الإدارة: @jadobotichancy"
                 )
             elif 'Duplicate login' in error_msg or 'duplicate' in error_msg.lower():
                 user_error = "❌ اسم المستخدم مستخدم بالفعل! الرجاء اختيار اسم آخر."
             elif 'email' in error_msg.lower():
-                user_error = f"❌ خطأ في البريد الإلكتروني: {error_msg}
-
-حاول مرة أخرى."
+                user_error = f"❌ خطأ في البريد الإلكتروني: {error_msg}\n\nحاول مرة أخرى."
             elif 'password' in error_msg.lower():
-                user_error = f"❌ خطأ في كلمة السر: {error_msg}
-
-يجب أن تكون على الأقل 3 أحرف."
+                user_error = f"❌ خطأ في كلمة السر: {error_msg}\n\nيجب أن تكون على الأقل 3 أحرف."
             elif 'parent' in error_msg.lower():
                 user_error = "❌ خطأ في نظام الإحالة. تواصل مع الدعم."
             else:
-                user_error = f"❌ خطأ:
-{error_msg}"
+                user_error = f"❌ خطأ:\n{error_msg}"
 
             raise Exception(user_error)
 
