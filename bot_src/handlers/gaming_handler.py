@@ -17,57 +17,56 @@ class GamingHandler:
     async def handle_gaming_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
         await query.answer()
-        
+
         message = "🎲 نظام الألعاب والجاكبوت"
         keyboard = [[InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data='back_to_menu')]]
-        
-        await query.edit_message_text(
-            message,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+
+        try:
+            await query.edit_message_text(
+                message,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        except Exception as e:
+            logger.error(f"Error in handle_gaming_callback: {e}")
+            await query.message.reply_text(
+                message,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
 
     @staticmethod
     async def jackpot_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """قائمة الجاكبوت الرئيسية"""
         try:
-            # استخدام دالة مساعدة للحصول على عرض اسم المستخدم
             def get_user_display_name(user):
-                """الحصول على اسم المستخدم للعرض"""
                 if hasattr(user, 'username') and user.username:
                     return f"@{user.username}"
                 elif hasattr(user, 'full_name') and user.full_name:
                     return user.full_name
                 else:
                     return f"User_{user.id}"
-            
-            # دالة تنسيق العملة
+
             def format_currency(amount):
-                """تنسيق المبلغ كعملة"""
                 try:
                     return f"{amount:,.0f} ليرة"
                 except:
                     return f"{amount} ليرة"
-            
-            # جلب قائمة الفائزين من الإدمن
+
             try:
                 from handlers.admin_handler import AdminHandler
                 jackpot_winners = AdminHandler.JACKPOT_WINNERS
-                
-                # بناء رسالة الفائزين
+
                 winners_text = ""
                 if jackpot_winners:
                     winners_text = "\n🏆 **آخر الفائزين:**\n"
-                    # عرض آخر 3 فائزين فقط
                     for i, winner_id in enumerate(jackpot_winners[-3:], 1):
                         winners_text += f"{i}️⃣ {winner_id}\n"
                 else:
                     winners_text = "\n🎯 **كن أول الفائزين!**\n"
             except:
                 winners_text = "\n🏆 **آخر الفائزين:**\n1. 🥇 الفائز الأول - 250,000 ليرة\n"
-            
-            # في حالة عدم وجود قاعدة بيانات، نستخدم بيانات افتراضية
+
             current_jackpot = 500000
-            
+
             message = f"""ichancy.com - الجاكبوت 🎲
 
 💎 **قيمة الجاكبوت الحالية:** {format_currency(current_jackpot)}
@@ -87,7 +86,7 @@ class GamingHandler:
 
 🔗 **العب الآن على ichancy.com**
             """
-            
+
             if update.callback_query:
                 await update.callback_query.edit_message_text(
                     message,
@@ -104,16 +103,22 @@ class GamingHandler:
             logger.error(f"خطأ في عرض قائمة الجاكبوت: {str(e)}")
             error_message = "❌ حدث خطأ في تحميل معلومات الجاكبوت. يرجى المحاولة لاحقاً."
             if update.callback_query:
-                await update.callback_query.edit_message_text(
-                    error_message,
-                    reply_markup=GamingHandler.create_jackpot_keyboard()
-                )
+                try:
+                    await update.callback_query.edit_message_text(
+                        error_message,
+                        reply_markup=GamingHandler.create_jackpot_keyboard()
+                    )
+                except Exception:
+                    await update.callback_query.message.reply_text(
+                        error_message,
+                        reply_markup=GamingHandler.create_jackpot_keyboard()
+                    )
             else:
                 await update.message.reply_text(
                     error_message,
                     reply_markup=GamingHandler.create_jackpot_keyboard()
                 )
-    
+
     @staticmethod
     def create_jackpot_keyboard():
         """إنشاء لوحة مفاتيح قائمة الجاكبوت"""
@@ -129,7 +134,6 @@ class GamingHandler:
             [
                 InlineKeyboardButton("📜 سجل الرهانات", callback_data='betting_history'),
                 InlineKeyboardButton("🎁 العروض والمكافآت", callback_data='promotions')
-                
             ],
             [
                 InlineKeyboardButton("👑 برنامج VIP", callback_data='vip_program'),
@@ -141,13 +145,12 @@ class GamingHandler:
             ]
         ]
         return InlineKeyboardMarkup(keyboard)
-    
+
     @staticmethod
     async def betting_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """سجل الرهانات"""
         user_id = str(update.effective_user.id)
-        
-        # في نظامك الحالي، يمكنك استخدام بيانات افتراضية
+
         message = """
 📜 **سجل الرهانات**
 
@@ -164,7 +167,7 @@ https://www.ichancy.com
 3. اربط حسابك بالبوت
 4. ابدأ اللعب واربح!
         """
-        
+
         keyboard = [
             [
                 InlineKeyboardButton("🎰 ابدأ اللعب الآن", url="https://www.ichancy.com"),
@@ -172,9 +175,9 @@ https://www.ichancy.com
             ],
             [InlineKeyboardButton("🔙 رجوع", callback_data='jackpot')]
         ]
-        
+
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
+
         if update.callback_query:
             await update.callback_query.edit_message_text(
                 message,
@@ -187,7 +190,7 @@ https://www.ichancy.com
                 reply_markup=reply_markup,
                 parse_mode='Markdown'
             )
-    
+
     @staticmethod
     async def casino_games(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """ألعاب الكازينو"""
@@ -221,7 +224,7 @@ https://www.ichancy.com
 🔗 **اللعب الآن على:**
 https://www.ichancy.com/casino
         """
-        
+
         keyboard = [
             [
                 InlineKeyboardButton("🎲 ألعاب سريعة", url="https://www.ichancy.com/casino/instant"),
@@ -233,9 +236,9 @@ https://www.ichancy.com/casino
             ],
             [InlineKeyboardButton("🔙 رجوع", callback_data='jackpot')]
         ]
-        
+
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
+
         if update.callback_query:
             await update.callback_query.edit_message_text(
                 message,
@@ -248,7 +251,7 @@ https://www.ichancy.com/casino
                 reply_markup=reply_markup,
                 parse_mode='Markdown'
             )
-    
+
     @staticmethod
     async def sports_betting(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """الرهانات الرياضية"""
@@ -287,7 +290,7 @@ https://www.ichancy.com/casino
 🔗 **الرهان الآن على:**
 https://www.ichancy.com/sports
         """
-        
+
         keyboard = [
             [
                 InlineKeyboardButton("⚽ كرة قدم", url="https://www.ichancy.com/sports/football"),
@@ -299,9 +302,9 @@ https://www.ichancy.com/sports
             ],
             [InlineKeyboardButton("🔙 رجوع", callback_data='jackpot')]
         ]
-        
+
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
+
         if update.callback_query:
             await update.callback_query.edit_message_text(
                 message,
@@ -314,7 +317,7 @@ https://www.ichancy.com/sports
                 reply_markup=reply_markup,
                 parse_mode='Markdown'
             )
-    
+
     @staticmethod
     async def promotions_bonuses(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """العروض والمكافآت"""
@@ -353,7 +356,7 @@ https://www.ichancy.com/sports
 🔗 **احصل على مكافآتك من:**
 https://www.ichancy.com/promotions
         """
-        
+
         keyboard = [
             [
                 InlineKeyboardButton("💰 مكافأة الترحيب", url="https://www.ichancy.com/promotions/welcome"),
@@ -365,9 +368,9 @@ https://www.ichancy.com/promotions
             ],
             [InlineKeyboardButton("🔙 رجوع", callback_data='jackpot')]
         ]
-        
+
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
+
         if update.callback_query:
             await update.callback_query.edit_message_text(
                 message,
@@ -380,20 +383,19 @@ https://www.ichancy.com/promotions
                 reply_markup=reply_markup,
                 parse_mode='Markdown'
             )
-    
+
     @staticmethod
     async def vip_program(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """برنامج VIP"""
         user_id = str(update.effective_user.id)
-        
-        # بيانات افتراضية
+
         vip_level = "🆕 مبتدئ"
         benefits = """
 • مكافأة ترحيب
 • دعم عادي
 • العب أكثر للترقية!
         """
-        
+
         message = f"""
 👑 **iChancy.com - برنامج VIP**
 
@@ -416,7 +418,7 @@ https://www.ichancy.com/promotions
 🔗 **ارتقِ بمستواك على:**
 https://www.ichancy.com/vip
         """
-        
+
         keyboard = [
             [
                 InlineKeyboardButton("📊 مستويات VIP", url="https://www.ichancy.com/vip/levels"),
@@ -428,9 +430,9 @@ https://www.ichancy.com/vip
             ],
             [InlineKeyboardButton("🔙 رجوع", callback_data='jackpot')]
         ]
-        
+
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
+
         if update.callback_query:
             await update.callback_query.edit_message_text(
                 message,
@@ -443,7 +445,7 @@ https://www.ichancy.com/vip
                 reply_markup=reply_markup,
                 parse_mode='Markdown'
             )
-    
+
     @staticmethod
     async def live_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """الدعم المباشر"""
@@ -485,7 +487,7 @@ https://www.ichancy.com/vip
 🔗 **تواصل معنا على:**
 https://www.ichancy.com/support
         """
-        
+
         keyboard = [
             [
                 InlineKeyboardButton("💬 دردشة مباشرة", url="https://www.ichancy.com/support/chat"),
@@ -497,9 +499,9 @@ https://www.ichancy.com/support
             ],
             [InlineKeyboardButton("🔙 رجوع", callback_data='jackpot')]
         ]
-        
+
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
+
         if update.callback_query:
             await update.callback_query.edit_message_text(
                 message,
@@ -512,7 +514,7 @@ https://www.ichancy.com/support
                 reply_markup=reply_markup,
                 parse_mode='Markdown'
             )
-    
+
     @staticmethod
     async def open_ichancy_website(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """فتح موقع iChancy"""
@@ -541,7 +543,7 @@ https://www.ichancy.com
 
 🔒 **آمن ومرخص بالكامل**
         """
-        
+
         keyboard = [
             [
                 InlineKeyboardButton("🌐 زيارة الموقع", url="https://www.ichancy.com"),
@@ -553,9 +555,9 @@ https://www.ichancy.com
             ],
             [InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data='back_to_menu')]
         ]
-        
+
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
+
         if update.callback_query:
             await update.callback_query.edit_message_text(
                 message,
@@ -568,15 +570,15 @@ https://www.ichancy.com
                 reply_markup=reply_markup,
                 parse_mode='Markdown'
             )
-    
+
     @staticmethod
     async def handle_gaming_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """معالجة استدعاءات نظام الألعاب"""
         query = update.callback_query
         await query.answer()
-        
+
         data = query.data
-        
+
         if data == 'jackpot':
             await GamingHandler.jackpot_menu(update, context)
         elif data == 'betting_history':
@@ -594,80 +596,93 @@ https://www.ichancy.com
         elif data == 'open_ichancy':
             await GamingHandler.open_ichancy_website(update, context)
         elif data == 'jackpot_value':
-            await query.edit_message_text(
-                "💰 **قيمة الجاكبوت الحالية:** 500,000 ليرة\n\n"
-                "📈 **آخر تحديث:** اليوم\n"
-                "🎯 **الحد الأدنى للفوز:** 50,000 ليرة\n\n"
-                "🔗 **شارك الآن:** https://www.ichancy.com/jackpot",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔙 رجوع", callback_data='jackpot')]
-                ]),
-                parse_mode='Markdown'
-            )
+            try:
+                await query.edit_message_text(
+                    "💰 **قيمة الجاكبوت الحالية:** 500,000 ليرة\n\n"
+                    "📈 **آخر تحديث:** اليوم\n"
+                    "🎯 **الحد الأدنى للفوز:** 50,000 ليرة\n\n"
+                    "🔗 **شارك الآن:** https://www.ichancy.com/jackpot",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔙 رجوع", callback_data='jackpot')]
+                    ]),
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                logger.error(f"Error in jackpot_value: {e}")
         elif data == 'jackpot_winners':
-            # جلب قائمة الفائزين من الإدمن
             try:
                 from handlers.admin_handler import AdminHandler
                 jackpot_winners = AdminHandler.JACKPOT_WINNERS
-                
+
                 if not jackpot_winners:
                     message_text = "🏆 **لا يوجد فائزين مسجلين بعد**\n\n🎯 **كن أول الفائزين!**"
                 else:
                     message_text = "🏆 **آخر الفائزين بالجاكبوت:**\n\n"
                     for i, winner_id in enumerate(jackpot_winners, 1):
                         message_text += f"{i}️⃣ {winner_id}\n"
-                    
                     message_text += f"\n🎉 **إجمالي الفائزين:** {len(jackpot_winners)}"
             except:
                 message_text = "🏆 **آخر الفائزين بالجاكبوت:**\n\n1. 🥇 الفائز الأول - 250,000 ليرة\n2. 🥈 الفائز الثاني - 150,000 ليرة\n3. 🥉 الفائز الثالث - 100,000 ليرة\n\n🎉 **كن الفائز القادم!**"
-            
-            await query.edit_message_text(
-                message_text,
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔙 رجوع", callback_data='jackpot')]
-                ]),
-                parse_mode='Markdown'
-            )
+
+            try:
+                await query.edit_message_text(
+                    message_text,
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔙 رجوع", callback_data='jackpot')]
+                    ]),
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                logger.error(f"Error in jackpot_winners: {e}")
         elif data == 'link_account':
-            await query.edit_message_text(
-                "🔗 **ربط حساب iChancy بالبوت**\n\n"
-                "1. سجل في iChancy.com\n"
-                "2. احصل على معرف لاعبك (Player ID)\n"
-                "3. أرسل المعرف في هذه المحادثة\n"
-                "4. سيتم ربط حسابك تلقائياً\n\n"
-                "💰 **مزايا الربط:**\n"
-                "• متابعة رهاناتك\n"
-                "• جاكبوت تلقائي\n"
-                "• مكافآت حصرية",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🌐 iChancy.com", url="https://www.ichancy.com")],
-                    [InlineKeyboardButton("🔙 رجوع", callback_data='betting_history')]
-                ]),
-                parse_mode='Markdown'
-            )
+            try:
+                await query.edit_message_text(
+                    "🔗 **ربط حساب iChancy بالبوت**\n\n"
+                    "1. سجل في iChancy.com\n"
+                    "2. احصل على معرف لاعبك (Player ID)\n"
+                    "3. أرسل المعرف في هذه المحادثة\n"
+                    "4. سيتم ربط حسابك تلقائياً\n\n"
+                    "💰 **مزايا الربط:**\n"
+                    "• متابعة رهاناتك\n"
+                    "• جاكبوت تلقائي\n"
+                    "• مكافآت حصرية",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🌐 iChancy.com", url="https://www.ichancy.com")],
+                        [InlineKeyboardButton("🔙 رجوع", callback_data='betting_history')]
+                    ]),
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                logger.error(f"Error in link_account: {e}")
         elif data == 'my_vip':
-            await query.edit_message_text(
-                "👑 **معلومات VIP الخاصة بك**\n\n"
-                "🏆 **المستوى:** مبتدئ\n"
-                "💰 **النقاط:** 0 نقطة\n"
-                "🎯 **للترقية:** 5,000 ليرة\n\n"
-                "🔗 **تعرف أكثر على:** https://www.ichancy.com/vip",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔙 رجوع", callback_data='vip_program')]
-                ]),
-                parse_mode='Markdown'
-            )
+            try:
+                await query.edit_message_text(
+                    "👑 **معلومات VIP الخاصة بك**\n\n"
+                    "🏆 **المستوى:** مبتدئ\n"
+                    "💰 **النقاط:** 0 نقطة\n"
+                    "🎯 **للترقية:** 5,000 ليرة\n\n"
+                    "🔗 **تعرف أكثر على:** https://www.ichancy.com/vip",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔙 رجوع", callback_data='vip_program')]
+                    ]),
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                logger.error(f"Error in my_vip: {e}")
         elif data == 'vip_progress':
-            await query.edit_message_text(
-                "📈 **تقدمك في برنامج VIP**\n\n"
-                "📊 **الرهانات المطلوبة:**\n"
-                "• 🥉 برونز: 5,000 ليرة\n"
-                "• 🥈 فضة: 20,000 ليرة\n"
-                "• 🥇 ذهب: 50,000 ليرة\n"
-                "• 💎 ماس: 100,000 ليرة\n\n"
-                "💰 **رهاناتك الحالية:** 0 ليرة",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔙 رجوع", callback_data='vip_program')]
-                ]),
-                parse_mode='Markdown'
-            )
+            try:
+                await query.edit_message_text(
+                    "📈 **تقدمك في برنامج VIP**\n\n"
+                    "📊 **الرهانات المطلوبة:**\n"
+                    "• 🥉 برونز: 5,000 ليرة\n"
+                    "• 🥈 فضة: 20,000 ليرة\n"
+                    "• 🥇 ذهب: 50,000 ليرة\n"
+                    "• 💎 ماس: 100,000 ليرة\n\n"
+                    "💰 **رهاناتك الحالية:** 0 ليرة",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔙 رجوع", callback_data='vip_program')]
+                    ]),
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                logger.error(f"Error in vip_progress: {e}")
