@@ -76,18 +76,14 @@ async def handle_ichancy(update, context):
 
     try:
         await query.edit_message_text(
-            "🎮 **نظام iChancy**
-
-اختر العملية:",
+            "🎮 **نظام iChancy**\n\nاختر العملية:",
             reply_markup=get_ichancy_keyboard(user_id),
             parse_mode="Markdown"
         )
     except Exception as e:
         logger.error(f"Error in handle_ichancy: {e}")
         await query.message.reply_text(
-            "🎮 **نظام iChancy**
-
-اختر العملية:",
+            "🎮 **نظام iChancy**\n\nاختر العملية:",
             reply_markup=get_ichancy_keyboard(user_id),
             parse_mode="Markdown"
         )
@@ -154,9 +150,7 @@ async def ichancy_deposit(update, context):
     context.user_data['ichancy_state'] = 'ichancy_deposit'
 
     await query.edit_message_text(
-        "💰 **إيداع iChancy**
-
-أرسل المبلغ:",
+        "💰 **إيداع iChancy**\n\nأرسل المبلغ:",
         parse_mode="Markdown"
     )
 
@@ -279,18 +273,14 @@ async def ichancy_balance(update, context):
 
     try:
         await query.edit_message_text(
-            f"📊 **رصيدك الحالي:**
-
-💰 {balance}",
+            f"📊 **رصيدك الحالي:**\n\n💰 {balance}",
             parse_mode="Markdown",
             reply_markup=get_ichancy_keyboard(user_id)
         )
     except Exception as e:
         logger.error(f"Error in ichancy_balance: {e}")
         await query.message.reply_text(
-            f"📊 **رصيدك الحالي:**
-
-💰 {balance}",
+            f"📊 **رصيدك الحالي:**\n\n💰 {balance}",
             parse_mode="Markdown",
             reply_markup=get_ichancy_keyboard(user_id)
         )
