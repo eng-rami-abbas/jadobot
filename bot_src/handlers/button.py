@@ -128,8 +128,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await handlers.deposit.handle_deposit(update, context)
 
     elif data in ['jackpot', 'casino_games', 'sports_betting', 'betting_history',
-                  'promotions', 'vip_program', 'live_support', 'open_ichancy'] or \
-         data.startswith(('jackpot_', 'casino_', 'sports_', 'vip_', 'gaming_')):
+                  'promotions', 'vip_program', 'live_support', 'open_ichancy'] or          data.startswith(('jackpot_', 'casino_', 'sports_', 'vip_', 'gaming_')):
         await handlers.gaming_handler.GamingHandler.handle_gaming_menu_callback(update, context)
 
     elif data == 'log' or data.startswith('log_'):
@@ -222,7 +221,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             transaction_id = '_'.join(parts[2:])
             await handlers.transactions.reject_transaction(query, transaction_id, transaction_type)
 
-    # ✅ معالج admin_panel المباشر (جديد، دون تغيير باقي الأزرار)
+    # معالج admin_panel المباشر
     elif data == 'admin_panel':
         await handlers.admin_handler.AdminHandler.admin_panel(update, context)
         return
