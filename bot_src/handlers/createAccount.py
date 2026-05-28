@@ -49,10 +49,9 @@ async def get_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data['password'] = password
 
-    # توليد email فريد - استخدام صيغة بريد أفضل
+    # توليد email فريد
     random_suffix = generateRandomString(6).lower()
     base_name = context.user_data['name'].lower()
-    # تنظيف الاسم من الأحرف غير الصالحة في البريد الإلكتروني
     base_name_clean = ''.join(c if c.isalnum() else '' for c in base_name)
     email = f"{base_name_clean}_{random_suffix}@players.ichancy.com"
 
@@ -67,7 +66,7 @@ async def get_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة إنشاء الحساب بدون تايم آوت"""
+    """معالجة إنشاء الحساب"""
     try:
         telegram_user_id = str(update.effective_user.id)
         name = context.user_data.get('name')
@@ -79,9 +78,7 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
 
         api = iChancyAPI()
 
-        # =========================
         # REGISTER ACCOUNT
-        # =========================
         result = api.register_player(
             username=name,
             password=password,
@@ -89,18 +86,12 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
             parent_id=handlers.ichancy.PARENT_ID
         )
 
-        logger.info("===== REGISTER RESPONSE START =====")
-        logger.info(f"Result: {result}")
-        logger.info("===== REGISTER RESPONSE END =====")
+        logger.info(f"Register result: {result}")
 
-        # نعطي السيرفر وقت (بديل آمن لـ time.sleep)
         await asyncio.sleep(3)
 
-        # =========================
         # VERIFY USER
-        # =========================
         verify = None
-
         for i in range(5):
             try:
                 verify = api.get_player_id_by_username(name)
@@ -111,36 +102,21 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
 
             if verify:
                 break
-
             await asyncio.sleep(1)
 
         logger.info(f"VERIFY RESULT: {verify}")
 
-        # =========================
         # SUCCESS CHECK
-        # =========================
         if result.get('success'):
-
-            # إذا تريد تشديد التحقق (اختياري لكن آمن)
-            if not verify:
-                logger.warning("Account not confirmed, but continuing anyway")
-
-            # =========================
-            # PLAYER ID
-            # =========================
-            player_id = verify  # استخدام نتيجة التحقق مباشرة
-
+            player_id = verify
             if not player_id:
                 try:
                     player_id = api.get_player_id_by_username(name)
-                    logger.info(f"PLAYER ID (from API): {player_id}")
                 except Exception as e:
                     logger.error(f"PLAYER ID ERROR: {e}")
                     player_id = result.get('player_id', None)
 
-            # =========================
             # DATABASE
-            # =========================
             try:
                 supa.upsert_user(
                     telegram_id=int(telegram_user_id),
@@ -149,7 +125,7 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
                     last_name=update.effective_user.last_name or ""
                 )
             except Exception as e:
-                logger.warning(f"⚠️ Could not upsert user meta to Supabase: {e}")
+                logger.warning(f"Could not upsert user meta to Supabase: {e}")
 
             try:
                 supa.upsert_ichancy_details(
@@ -159,28 +135,30 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
                     password=password,
                     player_id=player_id or "0"
                 )
-                
-                logger.info(f"✅ Saved ichancy details to Supabase for user {telegram_user_id}")
+                logger.info(f"Saved ichancy details to Supabase for user {telegram_user_id}")
             except Exception as e:
-                logger.warning(f"⚠️ Could not save ichancy details to Supabase: {e}")
-                # المتابعة حتى لو فشل حفظ Supabase
+                logger.warning(f"Could not save ichancy details to Supabase: {e}")
 
-            # =========================
             # MESSAGE SUCCESS
-            # =========================
             success_message = (
-                f"✅ تم إنشاء الحساب بنجاح!\n\n"
-                f"👤 الحساب: {name}\n"
-                f"🔒 كلمة السر: {password}\n"
-                f"📧 الإيميل: {email}\n"
-                f"🆔 رقم اللاعب: {player_id if player_id else 'قيد المعالجة'}\n\n"
+                f"✅ تم إنشاء الحساب بنجاح!
+
+"
+                f"👤 الحساب: {name}
+"
+                f"🔒 كلمة السر: {password}
+"
+                f"📧 الإيميل: {email}
+"
+                f"🆔 رقم اللاعب: {player_id if player_id else 'قيد المعالجة'}
+
+"
                 f"رابط الدخول: https://www.ichancy.com/ar"
             )
 
             await update.message.reply_text(success_message, parse_mode=None)
 
             from handlers.ichancy import get_ichancy_keyboard
-
             await update.message.reply_text(
                 "🎮 القائمة:",
                 reply_markup=get_ichancy_keyboard(telegram_user_id)
@@ -188,35 +166,46 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
 
         else:
             error_msg = result.get('error', 'Unknown error')
-            
-            # معالجة أخطاء شائعة
+
             if 'Authentication failed' in error_msg:
                 user_error = (
-                    "❌ خطأ في الاتصال بخوادم ichancy\n\n"
-                    "السبب المحتمل:\n"
-                    "• بيانات الدخول غير صحيحة\n"
-                    "• تم تعطيل الحساب\n"
-                    "• مشكلة في الاتصال\n\n"
-                    "الحل:\n"
+                    "❌ خطأ في الاتصال بخوادم ichancy
+
+"
+                    "السبب المحتمل:
+"
+                    "• بيانات الدخول غير صحيحة
+"
+                    "• تم تعطيل الحساب
+"
+                    "• مشكلة في الاتصال
+
+"
+                    "الحل:
+"
                     "تواصل مع الإدارة: @jadobotichancy"
                 )
             elif 'Duplicate login' in error_msg or 'duplicate' in error_msg.lower():
                 user_error = "❌ اسم المستخدم مستخدم بالفعل! الرجاء اختيار اسم آخر."
             elif 'email' in error_msg.lower():
-                user_error = f"❌ خطأ في البريد الإلكتروني: {error_msg}\n\nحاول مرة أخرى."
+                user_error = f"❌ خطأ في البريد الإلكتروني: {error_msg}
+
+حاول مرة أخرى."
             elif 'password' in error_msg.lower():
-                user_error = f"❌ خطأ في كلمة السر: {error_msg}\n\nيجب أن تكون على الأقل 3 أحرف."
+                user_error = f"❌ خطأ في كلمة السر: {error_msg}
+
+يجب أن تكون على الأقل 3 أحرف."
             elif 'parent' in error_msg.lower():
                 user_error = "❌ خطأ في نظام الإحالة. تواصل مع الدعم."
             else:
-                user_error = f"❌ خطأ:\n{error_msg}"
-            
+                user_error = f"❌ خطأ:
+{error_msg}"
+
             raise Exception(user_error)
 
     except Exception as e:
         error_text = str(e)
         logger.error(f"ERROR IN CREATE ACCOUNT: {error_text}", exc_info=True)
-
         await update.message.reply_text(error_text)
 
 
