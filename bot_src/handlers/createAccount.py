@@ -53,7 +53,7 @@ async def get_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     random_suffix = generateRandomString(6).lower()
     base_name = context.user_data['name'].lower()
     base_name_clean = ''.join(c if c.isalnum() else '' for c in base_name)
-    email = f"{base_name_clean}_{random_suffix}@players.ichancy.com"
+    email = f"{base_name_clean}_{random_suffix}@jadobot.jado"
 
     context.user_data['email'] = email
 
