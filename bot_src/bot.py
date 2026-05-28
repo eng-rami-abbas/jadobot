@@ -2,6 +2,7 @@ import Logger
 import logging
 import config.telegram
 import handlers.ichancy
+import handlers.ichancy_advanced
 import handlers.wheel_handler
 from telegram.ext import (
     Application,
@@ -188,7 +189,8 @@ def main() -> None:
         import handlers.createAccount
         import handlers.error
         import handlers.button
-        import handlers.ichancy_advanced
+        import handlers.ichancy
+import handlers.ichancy_advanced_advanced
         import handlers.sendGifts
         import handlers.reseiveGifts
         import handlers.gift_code
@@ -253,6 +255,11 @@ def main() -> None:
 
         application.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.ichancy_advanced.handle_ichancy_amount_input), group=2
+        )
+
+        # معالج نصوص iChancy (إنشاء حساب يدوي)
+        application.add_handler(
+            MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.ichancy.handle_ichancy_text), group=2
         )
 
         # معالج الأزرار العام (يحوي admin_panel وكل شيء)
