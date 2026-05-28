@@ -219,16 +219,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             transaction_id = '_'.join(parts[2:])
             await handlers.transactions.reject_transaction(query, transaction_id, transaction_type)
 
-    # ✅ معالج admin_panel المباشر (جديد، دون تغيير باقي الأزرار)
-    elif data == 'admin_panel':
-        await handlers.admin_handler.AdminHandler.admin_panel(update, context)
-        return
-
-    elif data == 'admin_panel' or data.startswith('admin_'):
-        if not (data.startswith('admin_approve_') or
-                data.startswith('admin_reject_') or
-                data.startswith('admin_analytics_')):
-            await handlers.admin_handler.AdminHandler.handle_admin_callback(update, context)
+    elif data.startswith('admin_'):
+        await handlers.admin_handler.AdminHandler.handle_admin_callback(update, context)
 
     elif data.startswith('maintenance_'):
         await handlers.maintenance_scheduler.MaintenanceScheduler.handle_maintenance_callback(update, context)
