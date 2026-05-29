@@ -216,7 +216,7 @@ async def handle_withdraw_amount(update, context):
     if result['success']:
         await update.message.reply_text("✅ تم السحب")
     else:
-        await update.message.reply_text(f"❌ فشل السحب: {result.get('error', 'Unknown error')}")    
+        await update.message.reply_text(f"❌ فشل السحب: {result.get('error', 'Unknown error')}")
 
 async def ichancy_deposit_all(update, context):
     query = update.callback_query
