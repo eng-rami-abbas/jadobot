@@ -1,31 +1,39 @@
 import Logger
 logger = Logger.getLogger()
 
-# استيرادات مباشرة من داخل الحزمة (نسبية)
-from . import checkStatus, ichancy, ichancy_advanced
-from . import backToMenu, help, withdrawal, deposit, withdrawal_conversation, conditions
-from . import problemInBot, problemInWebsite, contactUs
-from . import syriatel_cash_deposit
-from . import transactions
-from .admin_handler import AdminHandler
-from .referral_handler import ReferralHandler
-from .referral_system import *  # إن احتجت دوال محددة فاستوردها مباشرة
-from .gaming_handler import GamingHandler
-from .support_system import SupportSystem
-from .analytics_handler import AnalyticsHandler
-from .backup_system import BackupSystem
-from .maintenance_scheduler import MaintenanceScheduler
-from .monitoring_system import MonitoringSystem
-from .notification_system import NotificationSystem
-from .log import LogHandler
-from .guidesHandlers.guides import handle_guides
-from .guidesHandlers.guidesWhatIchancy import handle_guides_what_is_ichancy
-from .guidesHandlers.guidesHowToCreateNewAccount import handle_guides_how_to_create_new_account
-from .guidesHandlers.guidesHowDepositTelegramAccount import handle_guides_how_deposit_telegram_account
-from .guidesHandlers.guidesHowWithdrawTelegramAccount import handle_guides_how_withdraw_telegram_account
-from .guidesHandlers.guidesHowDepositIchancyAccount import handle_guides_how_deposit_ichancy_account
-from .guidesHandlers.guidesHowWithdrawIchancyAccount import handle_guides_how_withdraw_ichancy_account
-from .transactions import approve_transaction, reject_transaction
+# استيرادات مطلقة لكل الوحدات التي سنحتاجها
+import handlers.checkStatus
+import handlers.ichancy
+import handlers.ichancy_advanced
+import handlers.backToMenu
+import handlers.help
+import handlers.withdrawal
+import handlers.deposit
+import handlers.withdrawal_conversation
+import handlers.conditions
+import handlers.problemInBot
+import handlers.problemInWebsite
+import handlers.contactUs
+import handlers.guidesHandlers.guides
+import handlers.guidesHandlers.guidesWhatIchancy
+import handlers.guidesHandlers.guidesHowToCreateNewAccount
+import handlers.guidesHandlers.guidesHowDepositTelegramAccount
+import handlers.guidesHandlers.guidesHowWithdrawTelegramAccount
+import handlers.guidesHandlers.guidesHowDepositIchancyAccount
+import handlers.guidesHandlers.guidesHowWithdrawIchancyAccount
+import handlers.syriatel_cash_deposit
+import handlers.transactions
+import handlers.admin_handler
+import handlers.referral_handler
+import handlers.referral_system
+import handlers.gaming_handler
+import handlers.support_system
+import handlers.analytics_handler
+import handlers.backup_system
+import handlers.maintenance_scheduler
+import handlers.monitoring_system
+import handlers.notification_system
+import handlers.log
 
 import store
 import supabase_integration as supa
@@ -85,7 +93,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             return
         if block == "terms":
             await query.answer("⚠️ يجب الموافقة على الشروط أولاً", show_alert=True)
-            await conditions.handle_terms_and_conditions(query, mode="start")
+            await handlers.conditions.handle_terms_and_conditions(query, mode="start")
             return
         if block == "channel":
             await query.answer("❌ يجب الاشتراك بالقناة أولاً", show_alert=True)
@@ -126,127 +134,127 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await guidesButton(update, context, query)
 
     elif data == 'referral' or data.startswith('referral_'):
-        await ReferralHandler.handle_referral_callback(update, context)
+        await handlers.referral_handler.ReferralHandler.handle_referral_callback(update, context)
 
     elif data == 'deposit':
-        await deposit.handle_deposit(update, context)
+        await handlers.deposit.handle_deposit(update, context)
 
     elif data in ['jackpot', 'casino_games', 'sports_betting', 'betting_history',
                   'promotions', 'vip_program', 'live_support', 'open_ichancy'] or \
             data.startswith(('jackpot_', 'casino_', 'sports_', 'vip_', 'gaming_')):
-        await GamingHandler.handle_gaming_menu_callback(update, context)
+        await handlers.gaming_handler.GamingHandler.handle_gaming_menu_callback(update, context)
 
     elif data == 'log' or data.startswith('log_'):
-        await LogHandler.handle_log_callback(update, context)
+        await handlers.log.LogHandler.handle_log_callback(update, context)
 
     elif data in ['support_info', 'faq', 'message_admin', 'contact']:
-        await SupportSystem.handle_support_callback(update, context, data)
+        await handlers.support_system.SupportSystem.handle_support_callback(update, context, data)
 
     elif data.startswith('analytics_'):
-        await AnalyticsHandler.handle_analytics_callback(update, context)
+        await handlers.analytics_handler.AnalyticsHandler.handle_analytics_callback(update, context)
 
     elif data == 'check_status':
-        await checkStatus.handle_check_status(query, str(user_id))
+        await handlers.checkStatus.handle_check_status(query, str(user_id))
 
     elif data == 'help':
-        await help.handle_help(query)
+        await handlers.help.handle_help(query)
 
     elif data == 'back_to_menu':
-        await backToMenu.handle_back_to_menu(query, username)
+        await handlers.backToMenu.handle_back_to_menu(query, username)
 
     elif data == 'spin_wheel':
         import handlers.wheel_handler
         await handlers.wheel_handler.handle_spin_wheel(update, context)
 
     elif data == 'ichancy':
-        await ichancy.handle_ichancy(update, context)
+        await handlers.ichancy.handle_ichancy(update, context)
 
     elif data == 'ichancy_create_account':
-        await ichancy.ichancy_create(update, context)
+        await handlers.ichancy.ichancy_create(update, context)
 
     elif data == 'ichancy_account_info':
-        await ichancy_advanced.ichancy_account_info(update, context)
+        await handlers.ichancy_advanced.ichancy_account_info(update, context)
 
     elif data == 'ichancy_deposit_adv':
-        await ichancy_advanced.ichancy_deposit_advanced(update, context)
+        await handlers.ichancy_advanced.ichancy_deposit_advanced(update, context)
 
     elif data == 'ichancy_withdraw_adv':
-        await ichancy_advanced.ichancy_withdraw_advanced(update, context)
+        await handlers.ichancy_advanced.ichancy_withdraw_advanced(update, context)
 
     elif data == 'ichancy_deposit_all_adv':
-        await ichancy_advanced.ichancy_deposit_all_advanced(update, context)
+        await handlers.ichancy_advanced.ichancy_deposit_all_advanced(update, context)
 
     elif data == 'ichancy_transactions':
-        await ichancy_advanced.ichancy_transactions(update, context)
+        await handlers.ichancy_advanced.ichancy_transactions(update, context)
 
     elif data == 'back_to_ichancy':
-        await ichancy.handle_ichancy(update, context)
+        await handlers.ichancy.handle_ichancy(update, context)
 
     elif data == 'ichancy_delete_account':
-        await ichancy.delete_account_handler(update, context)
+        await handlers.ichancy.delete_account_handler(update, context)
 
     elif data == 'ichancy_deposit':
-        await ichancy.ichancy_deposit(update, context)
+        await handlers.ichancy.ichancy_deposit(update, context)
 
     elif data == 'ichancy_withdraw':
-        await ichancy.ichancy_withdraw(update, context)
+        await handlers.ichancy.ichancy_withdraw(update, context)
 
     elif data == 'ichancy_balance':
-        await ichancy.ichancy_balance(update, context)
+        await handlers.ichancy.ichancy_balance(update, context)
 
     elif data == 'withdrawal_old':
-        await withdrawal.handle_withdrawal(query, str(user_id))
+        await handlers.withdrawal.handle_withdrawal(query, str(user_id))
 
     elif data == 'deposit_old':
-        await deposit.handle_deposit(query, str(user_id))
+        await handlers.deposit.handle_deposit(query, str(user_id))
 
     elif data == 'terms_and_conditions':
-        await conditions.handle_terms_and_conditions(query, mode="menu")
+        await handlers.conditions.handle_terms_and_conditions(query, mode="menu")
 
     elif data == 'contact_us':
-        await contactUs.handle_contact_us(query)
+        await handlers.contactUs.handle_contact_us(query)
 
     elif data == 'problem_in_bot':
-        await problemInBot.handle_problem_in_bot(query)
+        await handlers.problemInBot.handle_problem_in_bot(query)
 
     elif data == 'problem_in_website':
-        await problemInWebsite.handle_problem_in_website(query)
+        await handlers.problemInWebsite.handle_problem_in_website(query)
 
     elif data.startswith('approve_'):
         parts = data.split('_')
         if len(parts) >= 3:
             transaction_type = parts[1]
             transaction_id = '_'.join(parts[2:])
-            await approve_transaction(query, transaction_id, transaction_type)
+            await handlers.transactions.approve_transaction(query, transaction_id, transaction_type)
 
     elif data.startswith('reject_'):
         parts = data.split('_')
         if len(parts) >= 3:
             transaction_type = parts[1]
             transaction_id = '_'.join(parts[2:])
-            await reject_transaction(query, transaction_id, transaction_type)
+            await handlers.transactions.reject_transaction(query, transaction_id, transaction_type)
 
     elif data == 'admin_panel':
-        await AdminHandler.admin_panel(update, context)
+        await handlers.admin_handler.AdminHandler.admin_panel(update, context)
         return
 
     elif data.startswith('admin_'):
         if not (data.startswith('admin_approve_') or
                 data.startswith('admin_reject_') or
                 data.startswith('admin_analytics_')):
-            await AdminHandler.handle_admin_callback(update, context)
+            await handlers.admin_handler.AdminHandler.handle_admin_callback(update, context)
 
     elif data.startswith('maintenance_'):
-        await MaintenanceScheduler.handle_maintenance_callback(update, context)
+        await handlers.maintenance_scheduler.MaintenanceScheduler.handle_maintenance_callback(update, context)
 
     elif data.startswith('monitor_'):
-        await MonitoringSystem.handle_monitoring_callback(update, context)
+        await handlers.monitoring_system.MonitoringSystem.handle_monitoring_callback(update, context)
 
     elif data.startswith('backup_'):
-        await BackupSystem.handle_backup_callback(update, context)
+        await handlers.backup_system.BackupSystem.handle_backup_callback(update, context)
 
     elif data.startswith('notification_'):
-        await NotificationSystem.handle_notification_callback(update, context)
+        await handlers.notification_system.NotificationSystem.handle_notification_callback(update, context)
 
     else:
         await query.answer(f"زر غير معروف: {data}", show_alert=True)
@@ -255,16 +263,16 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def guidesButton(update: Update, context: ContextTypes.DEFAULT_TYPE, query):
     data = query.data
     if data == "guides":
-        await handle_guides(query)
+        await handlers.guidesHandlers.guides.handle_guides(query)
     elif data == "guides_what_is_ichancy":
-        await handle_guides_what_is_ichancy(query)
+        await handlers.guidesHandlers.guidesWhatIchancy.handle_guides_what_is_ichancy(query)
     elif data == "guides_how_deposit_telegram_account":
-        await handle_guides_how_deposit_telegram_account(query)
+        await handlers.guidesHandlers.guidesHowDepositTelegramAccount.handle_guides_how_deposit_telegram_account(query)
     elif data == "guides_how_to_create_new_account":
-        await handle_guides_how_to_create_new_account(query)
+        await handlers.guidesHandlers.guidesHowToCreateNewAccount.handle_guides_how_to_create_new_account(query)
     elif data == "guides_how_withdraw_telegram_account":
-        await handle_guides_how_withdraw_telegram_account(query)
+        await handlers.guidesHandlers.guidesHowWithdrawTelegramAccount.handle_guides_how_withdraw_telegram_account(query)
     elif data == "guides_how_deposit_ichancy_account":
-        await handle_guides_how_deposit_ichancy_account(query)
+        await handlers.guidesHandlers.guidesHowDepositIchancyAccount.handle_guides_how_deposit_ichancy_account(query)
     elif data == "guides_how_withdraw_ichancy_account":
-        await handle_guides_how_withdraw_ichancy_account(query)
+        await handlers.guidesHandlers.guidesHowWithdrawIchancyAccount.handle_guides_how_withdraw_ichancy_account(query)
