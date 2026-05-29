@@ -50,7 +50,6 @@ async def is_blocked(update, context):
 
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    global handlers
     query = update.callback_query
     await query.answer()
 
