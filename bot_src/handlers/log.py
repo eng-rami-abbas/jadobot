@@ -10,7 +10,6 @@ class LogHandler:
     @staticmethod
     async def show_log_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
-        await query.answer()
 
         message = """
 📜 **سجلك الشخصي**
@@ -24,15 +23,20 @@ class LogHandler:
             [InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data='back_to_menu')]
         ]
 
-        await query.edit_message_text(
-            message,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        try:
+            await query.edit_message_text(
+                message,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        except Exception:
+            await query.message.reply_text(
+                message,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
 
     @staticmethod
     async def show_deposits(update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
-        await query.answer()
 
         user_id = query.from_user.id
 
@@ -63,12 +67,14 @@ class LogHandler:
 
         keyboard = [[InlineKeyboardButton("🔙 رجوع", callback_data='log')]]
 
-        await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
+        try:
+            await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
+        except Exception:
+            await query.message.reply_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
 
     @staticmethod
     async def show_withdrawals(update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
-        await query.answer()
 
         user_id = query.from_user.id
 
@@ -99,12 +105,14 @@ class LogHandler:
 
         keyboard = [[InlineKeyboardButton("🔙 رجوع", callback_data='log')]]
 
-        await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
+        try:
+            await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
+        except Exception:
+            await query.message.reply_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
 
     @staticmethod
     async def handle_log_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
-        await query.answer()
 
         data = query.data
 
