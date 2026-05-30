@@ -16,7 +16,6 @@ class GamingHandler:
     @staticmethod
     async def handle_gaming_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
-        await query.answer()
 
         message = "🎲 نظام الألعاب والجاكبوت"
         keyboard = [[InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data='back_to_menu')]]
@@ -88,11 +87,18 @@ class GamingHandler:
             """
 
             if update.callback_query:
-                await update.callback_query.edit_message_text(
-                    message,
-                    reply_markup=GamingHandler.create_jackpot_keyboard(),
-                    parse_mode='Markdown'
-                )
+                try:
+                    await update.callback_query.edit_message_text(
+                        message,
+                        reply_markup=GamingHandler.create_jackpot_keyboard(),
+                        parse_mode='Markdown'
+                    )
+                except Exception:
+                    await update.callback_query.message.reply_text(
+                        message,
+                        reply_markup=GamingHandler.create_jackpot_keyboard(),
+                        parse_mode='Markdown'
+                    )
             else:
                 await update.message.reply_text(
                     message,
@@ -179,11 +185,18 @@ https://www.ichancy.com
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         if update.callback_query:
-            await update.callback_query.edit_message_text(
-                message,
-                reply_markup=reply_markup,
-                parse_mode='Markdown'
-            )
+            try:
+                await update.callback_query.edit_message_text(
+                    message,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
+            except Exception:
+                await update.callback_query.message.reply_text(
+                    message,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
         else:
             await update.message.reply_text(
                 message,
@@ -240,11 +253,18 @@ https://www.ichancy.com/casino
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         if update.callback_query:
-            await update.callback_query.edit_message_text(
-                message,
-                reply_markup=reply_markup,
-                parse_mode='Markdown'
-            )
+            try:
+                await update.callback_query.edit_message_text(
+                    message,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
+            except Exception:
+                await update.callback_query.message.reply_text(
+                    message,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
         else:
             await update.message.reply_text(
                 message,
@@ -306,11 +326,18 @@ https://www.ichancy.com/sports
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         if update.callback_query:
-            await update.callback_query.edit_message_text(
-                message,
-                reply_markup=reply_markup,
-                parse_mode='Markdown'
-            )
+            try:
+                await update.callback_query.edit_message_text(
+                    message,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
+            except Exception:
+                await update.callback_query.message.reply_text(
+                    message,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
         else:
             await update.message.reply_text(
                 message,
@@ -372,11 +399,18 @@ https://www.ichancy.com/promotions
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         if update.callback_query:
-            await update.callback_query.edit_message_text(
-                message,
-                reply_markup=reply_markup,
-                parse_mode='Markdown'
-            )
+            try:
+                await update.callback_query.edit_message_text(
+                    message,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
+            except Exception:
+                await update.callback_query.message.reply_text(
+                    message,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
         else:
             await update.message.reply_text(
                 message,
@@ -434,11 +468,18 @@ https://www.ichancy.com/vip
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         if update.callback_query:
-            await update.callback_query.edit_message_text(
-                message,
-                reply_markup=reply_markup,
-                parse_mode='Markdown'
-            )
+            try:
+                await update.callback_query.edit_message_text(
+                    message,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
+            except Exception:
+                await update.callback_query.message.reply_text(
+                    message,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
         else:
             await update.message.reply_text(
                 message,
@@ -503,11 +544,18 @@ https://www.ichancy.com/support
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         if update.callback_query:
-            await update.callback_query.edit_message_text(
-                message,
-                reply_markup=reply_markup,
-                parse_mode='Markdown'
-            )
+            try:
+                await update.callback_query.edit_message_text(
+                    message,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
+            except Exception:
+                await update.callback_query.message.reply_text(
+                    message,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
         else:
             await update.message.reply_text(
                 message,
@@ -559,11 +607,18 @@ https://www.ichancy.com
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         if update.callback_query:
-            await update.callback_query.edit_message_text(
-                message,
-                reply_markup=reply_markup,
-                parse_mode='Markdown'
-            )
+            try:
+                await update.callback_query.edit_message_text(
+                    message,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
+            except Exception:
+                await update.callback_query.message.reply_text(
+                    message,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
         else:
             await update.message.reply_text(
                 message,
@@ -575,7 +630,6 @@ https://www.ichancy.com
     async def handle_gaming_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """معالجة استدعاءات نظام الألعاب"""
         query = update.callback_query
-        await query.answer()
 
         data = query.data
 
@@ -643,7 +697,7 @@ https://www.ichancy.com
                     "3. أرسل المعرف في هذه المحادثة\n"
                     "4. سيتم ربط حسابك تلقائياً\n\n"
                     "💰 **مزايا الربط:**\n"
-                    "• متابعة رهاناتك\n"
+                    "• متابعة رهاباتك\n"
                     "• جاكبوت تلقائي\n"
                     "• مكافآت حصرية",
                     reply_markup=InlineKeyboardMarkup([
@@ -678,7 +732,7 @@ https://www.ichancy.com
                     "• 🥈 فضة: 20,000 ليرة\n"
                     "• 🥇 ذهب: 50,000 ليرة\n"
                     "• 💎 ماس: 100,000 ليرة\n\n"
-                    "💰 **رهاناتك الحالية:** 0 ليرة",
+                    "💰 **رهاباتك الحالية:** 0 ليرة",
                     reply_markup=InlineKeyboardMarkup([
                         [InlineKeyboardButton("🔙 رجوع", callback_data='vip_program')]
                     ]),
