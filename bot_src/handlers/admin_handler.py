@@ -24,6 +24,8 @@ from utils import helpers
 from services.iChancyAPI import iChancyAPI
 import trans
 
+import supabase_integration as supa
+
 logger = logging.getLogger(__name__)
 
 # نظام التحليلات
@@ -550,10 +552,9 @@ class AdminHandler:
             else:
                 message = "⏳ **المعاملات المعلقة:**\n\n"
                 for i, transaction in enumerate(pending[:10], 1):
-                    user = store.getUserById(transaction['user_id'])
-                    username = user[2] if user else "غير معروف"
-                    message += f"{i}. **#{transaction['id']}** - {username}\n"
-                    message += f"   💰 {transaction.get('value', 0)} - {transaction.get('action_type', 'غير محدد')}\n"
+                    username = transaction.get('username', 'غير معروف')
+                    message += f"{i}. **#{transaction.get('id', '?')}** - {username}\n"
+                    message += f"   💰 {transaction.get('amount_syp', 0)} - {transaction.get('type', 'غير محدد')}\n"
                     message += f"   📅 {transaction.get('created_at', 'غير معروف')}\n\n"
             await update.callback_query.edit_message_text(
                 message,
@@ -940,8 +941,7 @@ class AdminHandler:
                 await update.message.reply_text("❌ المستخدم غير موجود",
                                                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]]))
                 return
-            user_id = user['id']
-            current_balance = store.get_user_balance(user_id)
+            current_balance = float(user.get('balance_syp', 0) or 0)
             if operation == 'add':
                 new_balance = current_balance + amount
                 action, emoji = "إضافة", "➕"
@@ -952,7 +952,7 @@ class AdminHandler:
                     return
                 new_balance = current_balance - amount
                 action, emoji = "خصم", "➖"
-            store.update_user_balance(user_id, new_balance)
+            supa.update_user_balance(telegram_id, new_balance)
             try:
                 await context.bot.send_message(chat_id=int(telegram_id), text=f"{emoji} تم {action} {amount} إلى رصيدك\n💵 رصيدك الحالي: {new_balance}")
             except TelegramError as e:
@@ -974,21 +974,24 @@ class AdminHandler:
                 await update.message.reply_text("❌ المستخدم غير موجود",
                                                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]]))
                 return
+            
+            # Get iChancy details
+            ichancy_account = supa.get_ichancy_details_by_telegram_id(telegram_id)
+            
             message = f"""
 👤 معلومات المستخدم
 
-🆔 معرف التليجرام: {user['telegram_id']}
-👤 اسم المستخدم: {user.get('telegram_username', 'غير محدد')}
-📧 الإيميل: {user.get('email', 'غير محدد')}
+🆔 معرف التليجرام: {user.get('telegram_id', telegram_id)}
+👤 اسم المستخدم: {user.get('username', 'غير محدد')}
+📧 الاسم الأول: {user.get('first_name', 'غير محدد')}
 📅 تاريخ التسجيل: {user.get('created_at', 'غير معروف')}
 
 💰 الأرصدة:
-💵 رصيد البوت: {user.get('balance', 0)}
-💳 رصيد الحساب: {user.get('account_balance', 0)}
+💵 رصيد البوت: {user.get('balance_syp', 0)}
 
 🎮 حساب Ichancy:
-👤 الاسم: {user.get('name', 'غير محدد')}
-🆔 معرف اللاعب: {user.get('player_id', 'غير محدد')}
+{"👤 الاسم: " + ichancy_account.get('username', 'غير محدد') if ichancy_account else "❌ لا يوجد حساب"}
+{"🆔 معرف اللاعب: " + str(ichancy_account.get('player_id', 'غير محدد')) if ichancy_account else ""}
             """
             await update.message.reply_text(message,
                                             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدمن", callback_data='admin_panel')]]))
@@ -1127,6 +1130,28 @@ class AdminHandler:
             await AdminHandler._handle_approve_transaction(update, context)
         elif data == 'admin_reject':
             await AdminHandler._handle_reject_transaction(update, context)
+        elif data == 'admin_balance':
+            await AdminHandler.user_management(update, context)
+        elif data == 'admin_logs':
+            try:
+                recent = store.get_recent_transactions(10)
+                if not recent:
+                    msg = "📋 لا توجد سجلات"
+                else:
+                    msg = "📋 **آخر السجلات:**\n\n"
+                    for i, tx in enumerate(recent, 1):
+                        msg += f"{i}. {tx.get('type', '?')} - {tx.get('amount_syp', 0)} - {tx.get('status', '?')}\n"
+                await query.edit_message_text(msg,
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data='admin_panel')]]),
+                    parse_mode='Markdown')
+            except Exception as e:
+                await query.edit_message_text(f"❌ خطأ في جلب السجلات: {e}",
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data='admin_panel')]]))
+        elif data == 'admin_bot_status':
+            await AdminHandler.manage_bot_status(update, context)
+        elif data == 'cancel_admin_operation':
+            context.user_data.pop('admin_operation', None)
+            await AdminHandler.admin_panel(update, context)
         else:
             await query.answer("زر غير معروف", show_alert=True)
 

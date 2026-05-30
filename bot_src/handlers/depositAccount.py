@@ -35,6 +35,17 @@ async def button_deposit_account_handler(update: Update, context: ContextTypes.D
     # جلب الرصيد من Supabase
     balance = supa.get_user_balance(telegram_id)
 
+    # جلب رصيد iChancy من API
+    api = handlers.ichancy.get_api()
+    account_balance = 0
+    if api and player_id:
+        try:
+            balance_result = api.get_player_balance_by_id(player_id)
+            if balance_result.get('success'):
+                account_balance = balance_result.get('balance', 0)
+        except Exception as e:
+            logger.warning(f"Could not fetch iChancy balance: {e}")
+
     context.user_data['player_id'] = player_id
     context.user_data['username_ichancy'] = username_ichancy
     context.user_data['balance'] = balance
@@ -75,7 +86,10 @@ async def get_ammount_for_deposit(update: Update, context: ContextTypes.DEFAULT_
         return ConversationHandler.END
 
     # تنفيذ عملية الشحن عبر iChancy API
-    api = iChancyAPI()
+    api = handlers.ichancy.get_api()
+    if not api:
+        await update.message.reply_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
+        return ConversationHandler.END
     deposit_result = api.deposit_to_player(player_id, ammountForDeposit, "Telegram Bot Deposit")
 
     if deposit_result.get('success'):

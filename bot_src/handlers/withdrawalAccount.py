@@ -26,9 +26,15 @@ async def button_withdrawal_from_account_handler(update: Update, context: Contex
     username_ichancy = account.get('username')
 
     # جلب الرصيد من iChancy API
-    api = iChancyAPI()
-    balance_result = api.get_player_balance_by_id(player_id)
-    account_balance = balance_result.get('balance', 0) if balance_result.get('success') else 0
+    api = handlers.ichancy.get_api()
+    account_balance = 0
+    if api and player_id:
+        try:
+            balance_result = api.get_player_balance_by_id(player_id)
+            if balance_result.get('success'):
+                account_balance = balance_result.get('balance', 0)
+        except Exception as e:
+            logger.warning(f"Could not fetch iChancy balance: {e}")
 
     # جلب رصيد البوت
     bot_balance = supa.get_user_balance(telegram_id)
@@ -76,7 +82,10 @@ async def get_withdraw_ammount(update: Update, context: ContextTypes.DEFAULT_TYP
         return ConversationHandler.END
 
     # تنفيذ عملية السحب عبر iChancy API
-    api = iChancyAPI()
+    api = handlers.ichancy.get_api()
+    if not api:
+        await update.message.reply_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
+        return ConversationHandler.END
     withdraw_result = api.withdraw_from_player(player_id, ammount, "Telegram Bot Withdrawal")
 
     if withdraw_result.get('success'):

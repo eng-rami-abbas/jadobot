@@ -16,6 +16,15 @@ def generateRandomString(length=5):
     return ''.join(random.choices(string.ascii_letters, k=length))
 
 
+def get_api():
+    """Get a shared iChancyAPI instance."""
+    try:
+        return iChancyAPI.get_shared() or iChancyAPI()
+    except Exception as e:
+        logger.error(f"Failed to create iChancyAPI instance: {e}")
+        return None
+
+
 async def button_create_account_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.callback_query.from_user.id
     account = supa.get_ichancy_details_by_telegram_id(telegram_id)
@@ -74,9 +83,15 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
         email = context.user_data.get('email')
 
         logger.info(f"Creating account for user {telegram_user_id}: {name}")
-        logger.info(f"Email: {email}, using parent_id: {handlers.ichancy.PARENT_ID}")
 
-        api = iChancyAPI()
+        # Use shared API instance
+        api = get_api()
+        if not api:
+            await update.message.reply_text(
+                "❌ لا يمكن الاتصال بخوادم iChancy حالياً\n\n"
+                "يرجى المحاولة لاحقاً أو التواصل مع الدعم: @jadobotichancy"
+            )
+            return
 
         # REGISTER ACCOUNT
         result = api.register_player(
@@ -90,9 +105,9 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
 
         await asyncio.sleep(3)
 
-        # VERIFY USER
+        # VERIFY USER - get player ID
         verify = None
-        for i in range(5):
+        for i in range(3):
             try:
                 verify = api.get_player_id_by_username(name)
                 logger.info(f"Verification attempt {i+1}: {verify}")
@@ -102,7 +117,7 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
 
             if verify:
                 break
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)
 
         logger.info(f"VERIFY RESULT: {verify}")
 
@@ -110,13 +125,9 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
         if result.get('success'):
             player_id = verify
             if not player_id:
-                try:
-                    player_id = api.get_player_id_by_username(name)
-                except Exception as e:
-                    logger.error(f"PLAYER ID ERROR: {e}")
-                    player_id = result.get('player_id', None)
+                player_id = result.get('player_id', None)
 
-            # DATABASE
+            # DATABASE - Save user data
             try:
                 supa.upsert_user(
                     telegram_id=int(telegram_user_id),
@@ -133,7 +144,7 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
                     username=name,
                     email=email,
                     password=password,
-                    player_id=player_id or "0"
+                    player_id=str(player_id) if player_id else "0"
                 )
                 logger.info(f"Saved ichancy details to Supabase for user {telegram_user_id}")
             except Exception as e:
@@ -160,21 +171,20 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             error_msg = result.get('error', 'Unknown error')
 
-            if 'Authentication failed' in error_msg:
+            if 'Authentication failed' in error_msg or 'Cloudflare' in error_msg:
                 user_error = (
                     "❌ خطأ في الاتصال بخوادم ichancy\n\n"
                     "السبب المحتمل:\n"
-                    "• بيانات الدخول غير صحيحة\n"
-                    "• تم تعطيل الحساب\n"
-                    "• مشكلة في الاتصال\n\n"
+                    "• حماية Cloudflare تحظر الاتصال من الخادم\n"
+                    "• مشكلة مؤقتة في الخوادم\n\n"
                     "الحل:\n"
-                    "تواصل مع الإدارة: @jadobotichancy"
+                    "حاول مرة أخرى بعد قليل أو تواصل مع الإدارة: @jadobotichancy"
                 )
-            elif 'Duplicate login' in error_msg or 'duplicate' in error_msg.lower():
+            elif 'Duplicate login' in error_msg or 'duplicate' in error_msg.lower() or 'مستخدم' in error_msg:
                 user_error = "❌ اسم المستخدم مستخدم بالفعل! الرجاء اختيار اسم آخر."
-            elif 'email' in error_msg.lower():
+            elif 'email' in error_msg.lower() or 'بريد' in error_msg:
                 user_error = f"❌ خطأ في البريد الإلكتروني: {error_msg}\n\nحاول مرة أخرى."
-            elif 'password' in error_msg.lower():
+            elif 'password' in error_msg.lower() or 'كلمة' in error_msg:
                 user_error = f"❌ خطأ في كلمة السر: {error_msg}\n\nيجب أن تكون على الأقل 3 أحرف."
             elif 'parent' in error_msg.lower():
                 user_error = "❌ خطأ في نظام الإحالة. تواصل مع الدعم."
@@ -186,7 +196,10 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
     except Exception as e:
         error_text = str(e)
         logger.error(f"ERROR IN CREATE ACCOUNT: {error_text}", exc_info=True)
-        await update.message.reply_text(error_text)
+        try:
+            await update.message.reply_text(error_text)
+        except Exception:
+            pass
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

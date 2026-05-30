@@ -356,3 +356,106 @@ def insertInTransactionAccount(user_id, status, tx_type, value=0):
         }).execute()
     except Exception as e:
         logger.error(f"insertInTransactionAccount error: {e}")
+
+
+# =========================
+# ADMIN FUNCTIONS (used by admin_handler.py)
+# =========================
+
+def getUserById(user_id):
+    """الحصول على بيانات المستخدم عبر المعرف الداخلي"""
+    try:
+        client = supa.get_client()
+        res = client.table("users") \
+            .select("*") \
+            .eq("id", user_id) \
+            .maybe_single() \
+            .execute()
+        if res.data:
+            # Convert dict to tuple-like list for backward compatibility
+            d = res.data
+            return [
+                d.get("id"),
+                d.get("telegram_id"),
+                d.get("username", ""),
+                d.get("first_name", ""),
+                d.get("last_name", ""),
+                d.get("balance_syp", 0),
+                d.get("created_at", ""),
+            ]
+        return None
+    except Exception as e:
+        logger.error(f"getUserById error: {e}")
+        return None
+
+
+def get_pending_transactions(limit=20):
+    """الحصول على المعاملات المعلقة"""
+    try:
+        client = supa.get_client()
+        res = client.table("transactions") \
+            .select("*") \
+            .eq("status", "pending") \
+            .order("created_at", desc=True) \
+            .limit(limit) \
+            .execute()
+        return res.data if res.data else []
+    except Exception as e:
+        logger.error(f"get_pending_transactions error: {e}")
+        return []
+
+
+def ban_user(telegram_id):
+    """حظر مستخدم"""
+    try:
+        client = supa.get_client()
+        client.table("users") \
+            .update({"is_blocked": True}) \
+            .eq("telegram_id", str(telegram_id)) \
+            .execute()
+        return True
+    except Exception as e:
+        logger.error(f"ban_user error: {e}")
+        return False
+
+
+def unban_user(telegram_id):
+    """إلغاء حظر مستخدم"""
+    try:
+        client = supa.get_client()
+        client.table("users") \
+            .update({"is_blocked": False}) \
+            .eq("telegram_id", str(telegram_id)) \
+            .execute()
+        return True
+    except Exception as e:
+        logger.error(f"unban_user error: {e}")
+        return False
+
+
+def get_user_count():
+    """الحصول على عدد المستخدمين"""
+    try:
+        client = supa.get_client()
+        res = client.table("users") \
+            .select("id", count="exact") \
+            .execute()
+        return res.count if hasattr(res, 'count') else len(res.data or [])
+    except Exception as e:
+        logger.error(f"get_user_count error: {e}")
+        return 0
+
+
+def get_recent_transactions(limit=10):
+    """الحصول على آخر المعاملات"""
+    try:
+        client = supa.get_client()
+        res = client.table("transactions") \
+            .select("*") \
+            .order("created_at", desc=True) \
+            .limit(limit) \
+            .execute()
+        return res.data if res.data else []
+    except Exception as e:
+        logger.error(f"get_recent_transactions error: {e}")
+        return []

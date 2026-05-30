@@ -118,15 +118,26 @@ def upsert_user(telegram_id: int, username: str, first_name: str = "", last_name
 
 
 def get_ichancy_details_by_telegram_id(telegram_id):
-    """Get iChancy account details for a Telegram user."""
+    """Get iChancy account details for a Telegram user.
+    Returns dict if found, None if not found or error.
+    Handles 204 'Missing response' gracefully (no record = None).
+    """
     try:
         result = get_client().table("users_ichancy_details") \
             .select("*") \
             .eq("telegram_id", str(telegram_id)) \
             .maybe_single() \
             .execute()
-        return result.data
+        # result.data may be None or a dict when using maybe_single()
+        if result.data:
+            return result.data
+        return None
     except Exception as e:
+        err_str = str(e)
+        # Supabase returns 204 when no matching row exists with maybe_single
+        if '204' in err_str or 'Missing response' in err_str:
+            logger.debug(f"No ichancy details found for telegram_id={telegram_id} (204)")
+            return None
         logger.error(f"get_ichancy_details_by_telegram_id error: {e}")
         return None
 

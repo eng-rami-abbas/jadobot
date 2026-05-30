@@ -15,6 +15,7 @@ pytz
 # Web Scraping (for Ichancy integration)
 beautifulsoup4==4.13.4
 cloudscraper==1.2.71
+curl_cffi==0.7.3
 
 # Data Processing (updated versions)
 numpy==1.26.4

@@ -68,6 +68,15 @@ NOTIFICATION_TYPES = {
 
 ANALYTICS_REFRESH = 3600
 
+
+def get_api():
+    """Get a shared iChancyAPI instance (avoids re-auth on every call)."""
+    try:
+        return iChancyAPI.get_shared() or iChancyAPI()
+    except Exception as e:
+        logger.error(f"Failed to create iChancyAPI instance: {e}")
+        return None
+
 async def handle_ichancy(update, context):
     query = update.callback_query
     await query.answer()
@@ -172,7 +181,10 @@ async def handle_deposit_amount(update, context):
         await update.message.reply_text("❌ يجب أن تنشئ حساب أولا")
         return
 
-    api = iChancyAPI()
+    api = get_api()
+    if not api:
+        await update.message.reply_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
+        return
     result = api.deposit_to_player_by_username(
         username=account["username"],
         amount=amount
@@ -207,7 +219,10 @@ async def handle_withdraw_amount(update, context):
 
     account = get_ichancy_account(user_id)
 
-    api = iChancyAPI()
+    api = get_api()
+    if not api:
+        await update.message.reply_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
+        return
     result = api.withdraw_from_player_by_username(
         username=account["username"] if account else None,
         amount=amount
@@ -229,7 +244,11 @@ async def ichancy_deposit_all(update, context):
         await query.edit_message_text("❌ يجب أن تنشئ حساب أولا")
         return
 
-    api = iChancyAPI()
+    api = get_api()
+    if not api:
+        await query.edit_message_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
+        return
+
     balance_result = api.get_player_balance_by_username(account["username"])
 
     if not balance_result['success']:
@@ -263,10 +282,14 @@ async def ichancy_balance(update, context):
         await query.edit_message_text("❌ يجب أن تنشئ حساب أولا")
         return
 
-    api = iChancyAPI()
+    api = get_api()
+    if not api:
+        await query.edit_message_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
+        return
+
     balance_result = api.get_player_balance_by_username(account["username"])
 
-    if balance_result['success']:
+    if balance_result and balance_result.get('success'):
         balance = balance_result.get('balance', 0)
     else:
         balance = 0
@@ -305,7 +328,10 @@ async def handle_ichancy_text(update, context):
         password = text
         email = f"{user_id}@bot.com"
 
-        api = iChancyAPI()
+        api = get_api()
+        if not api:
+            await update.message.reply_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
+            return
         res = api.register_player(
             username=username,
             password=password,

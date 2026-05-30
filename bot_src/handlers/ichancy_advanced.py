@@ -9,6 +9,7 @@ from services.iChancyAPI import iChancyAPI
 import store
 import supabase_integration as supa
 import Logger
+import handlers.ichancy
 
 logger = Logger.getLogger()
 
@@ -41,7 +42,10 @@ async def ichancy_account_info(update: Update, context: ContextTypes.DEFAULT_TYP
         player_id = account.get("player_id", "N/A")
         
         # جلب الرصيد من API
-        api = iChancyAPI()
+        api = handlers.ichancy.get_api()
+        if not api:
+            await query.edit_message_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
+            return
         balance_result = api.get_player_balance_by_username(username)
         balance = balance_result.get('balance', 0) if balance_result.get('success') else "غير متاح"
         
@@ -130,7 +134,10 @@ async def handle_ichancy_deposit_amount(update: Update, context: ContextTypes.DE
         player_id = account.get("player_id")
         
         # تنفيذ عملية الشحن
-        api = iChancyAPI()
+        api = handlers.ichancy.get_api()
+        if not api:
+            await update.message.reply_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
+            return
         deposit_result = api.deposit_to_player(player_id, amount, f"Telegram Bot Deposit")
         
         if deposit_result.get('success'):
@@ -228,7 +235,10 @@ async def handle_ichancy_withdraw_amount(update: Update, context: ContextTypes.D
         player_id = account.get("player_id")
         
         # تنفيذ عملية السحب
-        api = iChancyAPI()
+        api = handlers.ichancy.get_api()
+        if not api:
+            await update.message.reply_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
+            return
         withdraw_result = api.withdraw_from_player(player_id, amount, f"Telegram Bot Withdraw")
         
         if withdraw_result.get('success'):
@@ -356,7 +366,10 @@ async def ichancy_deposit_all_advanced(update: Update, context: ContextTypes.DEF
         player_id = account.get("player_id")
         
         # جلب الرصيد الحالي
-        api = iChancyAPI()
+        api = handlers.ichancy.get_api()
+        if not api:
+            await query.edit_message_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
+            return
         balance_result = api.get_player_balance_by_id(player_id)
         
         if not balance_result.get('success'):

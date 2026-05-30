@@ -23,12 +23,12 @@ def validate_tokens():
     """Validate that required tokens are set"""
     if not TOKEN:
         raise ValueError("Telegram bot token is not set in config.telegram.TOKEN")
-    
-    if not COOKIE_STRING:
-        raise ValueError("Cookie string is not set in config.telegram.COOKIE_STRING")
-    
+
+    # COOKIE_STRING is no longer required - we authenticate via iChancyAPI
+    # which uses ICHANCY_USERNAME and ICHANCY_PASSWORD environment variables
+
     # For webhook mode, validate webhook URL
     if os.getenv("RAILWAY_ENVIRONMENT") == "production" and not WEBHOOK_URL:
         raise ValueError("Webhook URL is not set in config.telegram.WEBHOOK_URL")
-    
+
     return True
