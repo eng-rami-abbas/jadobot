@@ -201,6 +201,7 @@ def main() -> None:
         import handlers.withdrawal_conversation
         import handlers.admin_handler
         import handlers.bot_status
+        import handlers.support_system
 
         request = HTTPXRequest()
         application = Application.builder() \
@@ -214,6 +215,7 @@ def main() -> None:
         from handlers.broadcast_processor import set_bot
         set_bot(application.bot)
 
+        # حماية حالة البوت (الصيانة) - الأولوية القصوى
         application.add_handler(
             CallbackQueryHandler(handlers.bot_status.bot_status_callback_guard),
             group=-1,
@@ -223,6 +225,7 @@ def main() -> None:
             group=-1,
         )
 
+        # أوامر /start /balance /admin /cancel
         application.add_handler(CommandHandler('start', handlers.command.start.start), group=0)
         application.add_handler(CommandHandler('balance', handlers.command.balance.balance), group=0)
         application.add_handler(CommandHandler('admin', handlers.admin_handler.admin_command), group=0)
@@ -234,6 +237,7 @@ def main() -> None:
 
         application.add_handler(CommandHandler('cancel', cancel_all), group=0)
 
+        # محادثات (ConversationHandlers) - المجموعة 1
         application.add_handler(handlers.createAccount.conversationHandler(), group=1)
         application.add_handler(handlers.sendGifts.conversationHandler(), group=1)
         application.add_handler(handlers.reseiveGifts.conversationHandler(), group=1)
@@ -243,16 +247,39 @@ def main() -> None:
         application.add_handler(handlers.adminMessage.conversationHandler(), group=1)
         application.add_handler(handlers.deposit.conversationHandler(), group=1)
         application.add_handler(handlers.withdrawal_conversation.conversationHandler(), group=1)
+        # تسجيل ConversationHandler الخاص بنظام الدعم
+        try:
+            application.add_handler(handlers.support_system.SupportSystem.get_conversation_handler(), group=1)
+        except Exception as e:
+            print(f"Warning: Could not register support conversation handler: {e}")
+
+        # معالجات الرسائل النصية - المجموعة 2
+        # معالج إدخال المبالغ المتقدم لـ iChancy + معالج إنشاء الحساب من ichancy.py
+        async def handle_text_routing(update, context):
+            """توجيه الرسائل النصية حسب الحالة"""
+            # التحقق من حالة إنشاء حساب ichancy
+            ichancy_state = context.user_data.get('ichancy_state')
+            if ichancy_state:
+                await handlers.ichancy.handle_ichancy_text(update, context)
+                return
+
+            # التحقق من حالة إيداع/سحب ichancy المتقدم
+            if context.user_data.get('ichancy_deposit') or context.user_data.get('ichancy_withdraw'):
+                await handlers.ichancy_advanced.handle_ichancy_amount_input(update, context)
+                return
+
         application.add_handler(
-            CallbackQueryHandler(handlers.ichancy.handle_ichancy, pattern="^ichancy$"), group=3
+            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_routing), group=2
         )
 
+        # WebApp data handler
         application.add_handler(
             MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handlers.wheel_handler.handle_web_app_data), group=2
         )
 
+        # معالج أزرار iChancy المباشر
         application.add_handler(
-            MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.ichancy_advanced.handle_ichancy_amount_input), group=2
+            CallbackQueryHandler(handlers.ichancy.handle_ichancy, pattern="^ichancy$"), group=3
         )
 
         # معالج الأزرار العام (يحوي admin_panel وكل شيء)
@@ -260,8 +287,9 @@ def main() -> None:
             CallbackQueryHandler(handlers.button.button), group=3
         )
 
+        # تسجيل الرسائل الواردة - المجموعة 4 (أخيراً)
         application.add_handler(
-            MessageHandler(filters.TEXT, log_incoming_message), group=3
+            MessageHandler(filters.TEXT, log_incoming_message), group=4
         )
 
         async def start_background_tasks(app):
