@@ -1,0 +1,984 @@
+diff --git a/bot_src/bot.py b/bot_src/bot.py
+index 2fae332..9a76aa4 100644
+--- a/bot_src/bot.py
++++ b/bot_src/bot.py
+@@ -184,6 +184,14 @@ def main() -> None:
+         print(e)
+         exit(1)
+ 
++    # التحقق من اتصال Supabase
++    try:
++        import supabase_integration as supa
++        client = supa.get_client()
++        print("Supabase connection: OK")
++    except Exception as e:
++        print(f"Warning: Supabase connection issue: {e}")
++
+     try:
+         import handlers.createAccount
+         import handlers.error
+diff --git a/bot_src/handlers/adminMessage.py b/bot_src/handlers/adminMessage.py
+index d11fcc5..3532324 100644
+--- a/bot_src/handlers/adminMessage.py
++++ b/bot_src/handlers/adminMessage.py
+@@ -30,7 +30,9 @@ def conversationHandler():
+             MESSAGE :[MessageHandler(filters.TEXT & ~filters.COMMAND, get_message)]
+         },
+         fallbacks=[CommandHandler('cancel', cancel)],
+-        
++        per_message=True,
++        per_user=True,
++        allow_reentry=True,
+     )
+ 
+ 
+diff --git a/bot_src/handlers/button.py b/bot_src/handlers/button.py
+index 61c8c7a..713a89c 100644
+--- a/bot_src/handlers/button.py
++++ b/bot_src/handlers/button.py
+@@ -34,6 +34,7 @@ import handlers.maintenance_scheduler
+ import handlers.monitoring_system
+ import handlers.notification_system
+ import handlers.log
++import handlers.wheel_handler  # ← تم النقل لحل مشكلة UnboundLocalError
+ 
+ import store
+ import supabase_integration as supa
+@@ -226,7 +227,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+     # ========================================
+     elif data == 'spin_wheel':
+         await query.answer()
+-        import handlers.wheel_handler
++        # ← تم نقل الاستيراد إلى أعلى الملف لحل مشكلة UnboundLocalError
+         await handlers.wheel_handler.handle_spin_wheel(update, context)
+         return
+ 
+diff --git a/bot_src/handlers/createAccount.py b/bot_src/handlers/createAccount.py
+index 1b6e17e..fee2f37 100644
+--- a/bot_src/handlers/createAccount.py
++++ b/bot_src/handlers/createAccount.py
+@@ -205,5 +205,8 @@ def conversationHandler():
+             PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_password)],
+         },
+         fallbacks=[CommandHandler('cancel', cancel)],
++        per_message=True,
++        per_user=True,
++        allow_reentry=True,
+     )
+     return conv_handler
+diff --git a/bot_src/handlers/deposit.py b/bot_src/handlers/deposit.py
+index deb700d..1df0bcd 100644
+--- a/bot_src/handlers/deposit.py
++++ b/bot_src/handlers/deposit.py
+@@ -351,5 +351,6 @@ def conversationHandler():
+         ],
+ 
+         allow_reentry=True,
+-        per_user=True
++        per_user=True,
++        per_message=True,
+     )
+\ No newline at end of file
+diff --git a/bot_src/handlers/depositAccount.py b/bot_src/handlers/depositAccount.py
+index d95df15..0b46f32 100644
+--- a/bot_src/handlers/depositAccount.py
++++ b/bot_src/handlers/depositAccount.py
+@@ -12,7 +12,9 @@ import store
+ import handlers.ichancy
+ 
+ # 🔥 SUPABASE
+-from bot import supabase, log_to_db
++import supabase_integration as supa
++import Logger
++logger = Logger.getLogger()
+ 
+ AMMOUNT = range(1)
+ 
+@@ -71,17 +73,17 @@ async def get_ammount_for_deposit(update: Update, context: ContextTypes.DEFAULT_
+     # 🔥 SUPABASE LOG
+     # =========================
+     try:
+-        supabase.table("transactions").insert({
++        supa.get_client().table("transactions").insert({
+             "user_id": str(user_id),
+             "type": "deposit",
+             "amount": ammountForDeposit,
+             "status": "done"
+         }).execute()
+ 
+-        log_to_db("deposit", f"Deposit account {ammountForDeposit} user {user_id}")
++        logger.info(f"Deposit account {ammountForDeposit} user {user_id}")
+ 
+     except Exception as e:
+-        print("Supabase error:", e)
++        logger.error(f"Supabase error: {e}")
+ 
+     await update.message.reply_text("تمت العملية بنجاح")
+     return ConversationHandler.END
+@@ -106,5 +108,8 @@ def conversationHandler():
+             ]
+         },
+         fallbacks=[CommandHandler('cancel', cancel)],
++        per_message=True,
++        per_user=True,
++        allow_reentry=True,
+     )
+     return conv_handler
+diff --git a/bot_src/handlers/gift_code.py b/bot_src/handlers/gift_code.py
+index 9da7ccf..fdea30a 100644
+--- a/bot_src/handlers/gift_code.py
++++ b/bot_src/handlers/gift_code.py
+@@ -175,5 +175,6 @@ def conversationHandler():
+             CommandHandler("cancel", cancel_gift_code)
+         ],
+         allow_reentry=True,
+-        per_user=True
++        per_user=True,
++        per_message=True,
+     )
+diff --git a/bot_src/handlers/reseiveGifts.py b/bot_src/handlers/reseiveGifts.py
+index c875e75..d2044f8 100644
+--- a/bot_src/handlers/reseiveGifts.py
++++ b/bot_src/handlers/reseiveGifts.py
+@@ -1,12 +1,9 @@
+ from datetime import datetime, timezone
+-from bot import supabase
++import supabase_integration as supa
+ from config.telegram import CallbackQuery ,Update ,ReplyKeyboardRemove
+ from telegram.ext import ConversationHandler , CallbackQueryHandler ,MessageHandler ,filters ,CallbackContext ,CommandHandler
+ import store
+ CODE = range(1)
+-from bot import exchange_rate_cache
+-
+-rate = exchange_rate_cache
+ 
+ async def button_reseive_gift_handler(update: Update , context:CallbackContext ):
+     query = update.callback_query
+@@ -23,7 +20,7 @@ async def get_code(update: Update, context: CallbackContext):
+     telegram_id = update.message.from_user.id
+ 
+     # 1. جلب الكود
+-    res = supabase.table("gift_codes").select("*").eq("code", code).execute()
++    res = supa.get_client().table("gift_codes").select("*").eq("code", code).execute()
+ 
+     if not res.data:
+         await update.message.reply_text("❌ الكود غير صحيح")
+@@ -55,22 +52,22 @@ async def get_code(update: Update, context: CallbackContext):
+     amount = gift["amount"]
+ 
+     # 4. إضافة الرصيد (RPC)
+-    supabase.rpc("increment_balance", {
++    supa.get_client().rpc("increment_balance", {
+         "uid": telegram_id,
+         "amount": amount,
+         "currency": "syp",
+         "exchange_rate": 1
+     }).execute()
+     
+-    supabase.rpc("increment_balance", {
++    supa.get_client().rpc("increment_balance", {
+         "uid": telegram_id,
+         "amount": amount,
+         "currency": "usd",
+-        "exchange_rate": 15000  # أو من إعداداتك
++        "exchange_rate": supa.get_exchange_rate()
+     }).execute()
+     
+     # 5. تحديث الكود كمستخدم
+-    supabase.table("gift_codes").update({
++    supa.get_client().table("gift_codes").update({
+         "is_used": True,
+         "used_by": telegram_id,
+         "used_at": datetime.now(timezone.utc).isoformat()
+@@ -98,5 +95,8 @@ def conversationHandler():
+             CODE: [MessageHandler(filters.TEXT & ~filters.COMMAND , get_code)]
+         },
+      fallbacks=[CommandHandler('cancel', cancel)],
++        per_message=True,
++        per_user=True,
++        allow_reentry=True,
+     )
+     return conv_handler
+\ No newline at end of file
+diff --git a/bot_src/handlers/sendGifts.py b/bot_src/handlers/sendGifts.py
+index 7eda0dd..04a2307 100644
+--- a/bot_src/handlers/sendGifts.py
++++ b/bot_src/handlers/sendGifts.py
+@@ -308,6 +308,7 @@ def conversationHandler():
+         },
+         fallbacks=[CommandHandler('cancel', cancel)],
+         per_user=True,
+-        allow_reentry=True
++        allow_reentry=True,
++        per_message=True,
+     )
+     return conv_handler
+diff --git a/bot_src/handlers/support_system.py b/bot_src/handlers/support_system.py
+index 5727111..e3d71ad 100644
+--- a/bot_src/handlers/support_system.py
++++ b/bot_src/handlers/support_system.py
+@@ -519,6 +519,9 @@ https://www.facebook.com/ichancy.co
+                 SUPPORT_MESSAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, SupportSystem.handle_support_message)]
+             },
+             fallbacks=[CommandHandler('cancel', SupportSystem.cancel_support)],
++            per_message=True,
++            per_user=True,
++            allow_reentry=True,
+         )
+     
+     @staticmethod
+diff --git a/bot_src/handlers/syriatel_cash_deposit.py b/bot_src/handlers/syriatel_cash_deposit.py
+index 8c0c0c6..1684189 100644
+--- a/bot_src/handlers/syriatel_cash_deposit.py
++++ b/bot_src/handlers/syriatel_cash_deposit.py
+@@ -84,6 +84,9 @@ def conversationHandler():
+             value: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_value)],
+         },
+         fallbacks=[CommandHandler('cancel', cancel)],
++        per_message=True,
++        per_user=True,
++        allow_reentry=True,
+     )
+     return conv_handler
+ 
+diff --git a/bot_src/handlers/withdrawalAccount.py b/bot_src/handlers/withdrawalAccount.py
+index 1e91ac9..9c19df9 100644
+--- a/bot_src/handlers/withdrawalAccount.py
++++ b/bot_src/handlers/withdrawalAccount.py
+@@ -54,6 +54,9 @@ def conversationHandler():
+         states={
+             AMMOUNT : [MessageHandler(filters.TEXT & ~filters.COMMAND , get_withdraw_ammount) ]
+         },
+-        fallbacks=[CommandHandler('cancel' , cancel)]
++        fallbacks=[CommandHandler('cancel' , cancel)],
++        per_message=True,
++        per_user=True,
++        allow_reentry=True,
+     )
+     return conv_handler
+\ No newline at end of file
+diff --git a/bot_src/handlers/withdrawal_conversation.py b/bot_src/handlers/withdrawal_conversation.py
+index a19f07d..dd3981f 100644
+--- a/bot_src/handlers/withdrawal_conversation.py
++++ b/bot_src/handlers/withdrawal_conversation.py
+@@ -420,5 +420,6 @@ def conversationHandler():
+         ],
+ 
+         allow_reentry=True,
+-        per_user=True
++        per_user=True,
++        per_message=True,
+     )
+diff --git a/bot_src/services/iChancyAPI.py b/bot_src/services/iChancyAPI.py
+index 24b3509..b8a7398 100644
+--- a/bot_src/services/iChancyAPI.py
++++ b/bot_src/services/iChancyAPI.py
+@@ -180,48 +180,6 @@ class iChancyAPI:
+         except Exception as e:
+             logger.error(f"Sign-in exception: {e}", exc_info=True)
+             return False
+-            response = self.scraper.post(url, json=payload, timeout=30)
+-            
+-            logger.info(f"Sign in response: {response.status_code}")
+-            logger.debug(f"Sign in raw: {response.text}")
+-            
+-            if response.status_code == 403:
+-                logger.error("Sign in failed: 403 Forbidden - Invalid credentials or access denied")
+-                logger.error(f"Username: {payload['username']}")
+-                logger.error(f"Password: {'*' * len(payload['password']) if payload['password'] else 'EMPTY'}")
+-                logger.error(f"URL: {url}")
+-                logger.error(f"Headers: {dict(self.scraper.headers)}")
+-                return False
+-            elif response.status_code != 200:
+-                logger.error(f"Sign in failed: {response.status_code}")
+-                return False
+-            
+-            try:
+-                data = response.json()
+-            except:
+-                logger.error("Invalid JSON response from sign in")
+-                return False
+-            
+-            if not data.get('status') or not data.get('result'):
+-                logger.error("Sign in failed: Invalid response")
+-                return False
+-            
+-            result = data['result']
+-            self.access_token = result.get('accessToken')
+-            self.refresh_token = result.get('refreshToken')
+-            
+-            # Set token expiration (1 hour from now)
+-            self.token_expires_at = datetime.now() + timedelta(hours=1)
+-            
+-            # Update session headers with token
+-            self.scraper.headers['Authorization'] = f'Bearer {self.access_token}'
+-            
+-            logger.info("Successfully signed in to iChancy API")
+-            return True
+-            
+-        except Exception as e:
+-            logger.error(f"Sign in error: {e}")
+-            return False
+     
+     def _refresh_token(self):
+         """Refresh access token using refresh token"""
+diff --git a/bot_src/store.py b/bot_src/store.py
+index 21f6927..dcbe4f6 100644
+--- a/bot_src/store.py
++++ b/bot_src/store.py
+@@ -1,109 +1,14 @@
+-import sqlite3
++"""
++store.py - طبقة البيانات (Supabase فقط)
++تم تحويل هذا الملف من SQLite إلى Supabase بالكامل
++جميع العمليات تمر عبر supabase_integration.py
++"""
++import logging
+ from datetime import datetime, timezone
+-from contextlib import contextmanager
+ 
+-DB_NAME = "database.db"
++import supabase_integration as supa
+ 
+-# =========================
+-# DATABASE CONNECTION
+-# =========================
+-
+-@contextmanager
+-def get_db():
+-    conn = sqlite3.connect(DB_NAME)
+-    conn.row_factory = sqlite3.Row
+-    try:
+-        yield conn
+-        conn.commit()
+-    finally:
+-        conn.close()
+-
+-
+-# 🔥 مهم
+-def getDatabaseConnection():
+-    return sqlite3.connect(DB_NAME)
+-
+-
+-# =========================
+-# INIT DATABASE
+-# =========================
+-
+-def init_db():
+-    with get_db() as conn:
+-        cur = conn.cursor()
+-
+-        # USERS
+-        cur.execute("""
+-        CREATE TABLE IF NOT EXISTS users (
+-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+-            telegram_id INTEGER UNIQUE,
+-            username TEXT,
+-            balance REAL DEFAULT 0,
+-            agreed_terms INTEGER DEFAULT 0,
+-            temp_username TEXT,
+-            state TEXT,
+-            ichancy_account TEXT,
+-            ichancy_password TEXT,
+-            ichancy_player_id TEXT,
+-            created_at TEXT
+-        )
+-        """)
+-
+-        # TRANSACTIONS
+-        cur.execute("""
+-        CREATE TABLE IF NOT EXISTS transactions (
+-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+-            telegram_id TEXT,
+-            type TEXT,
+-            method TEXT,
+-            amount REAL,
+-            transfer_num TEXT,
+-            status TEXT,
+-            created_at TEXT
+-        )
+-        """)
+-
+-    migrate_db()
+-
+-
+-def migrate_db():
+-    with get_db() as conn:
+-        cur = conn.cursor()
+-
+-        try:
+-            cur.execute("ALTER TABLE users ADD COLUMN agreed_terms INTEGER DEFAULT 0")
+-        except sqlite3.OperationalError:
+-            pass
+-
+-        try:
+-            cur.execute("ALTER TABLE users ADD COLUMN balance REAL DEFAULT 0")
+-        except sqlite3.OperationalError:
+-            pass
+-
+-        try:
+-            cur.execute("ALTER TABLE users ADD COLUMN temp_username TEXT")
+-        except sqlite3.OperationalError:
+-            pass
+-
+-        try:
+-            cur.execute("ALTER TABLE users ADD COLUMN state TEXT")
+-        except sqlite3.OperationalError:
+-            pass
+-
+-        try:
+-            cur.execute("ALTER TABLE users ADD COLUMN ichancy_account TEXT")
+-        except sqlite3.OperationalError:
+-            pass
+-
+-        try:
+-            cur.execute("ALTER TABLE users ADD COLUMN ichancy_password TEXT")
+-        except sqlite3.OperationalError:
+-            pass
+-
+-        try:
+-            cur.execute("ALTER TABLE users ADD COLUMN ichancy_player_id TEXT")
+-        except sqlite3.OperationalError:
+-            pass
++logger = logging.getLogger(__name__)
+ 
+ 
+ # =========================
+@@ -111,71 +16,93 @@ def migrate_db():
+ # =========================
+ 
+ def getUserByTelegramId(telegram_id):
+-    with get_db() as conn:
+-        cur = conn.cursor()
+-        cur.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
+-        user = cur.fetchone()
+-        return dict(user) if user else None
++    """الحصول على بيانات المستخدم عبر معرف تيلغرام"""
++    try:
++        client = supa.get_client()
++        res = client.table("users") \
++            .select("*") \
++            .eq("telegram_id", str(telegram_id)) \
++            .maybe_single() \
++            .execute()
++        return res.data if res.data else None
++    except Exception as e:
++        logger.error(f"getUserByTelegramId error: {e}")
++        return None
+ 
+ 
+ def updateUser(telegram_id, fields):
++    """تحديث بيانات المستخدم"""
+     if not fields:
+         return False
+-
+-    with get_db() as conn:
+-        cur = conn.cursor()
+-        set_clause = ", ".join(f"{key} = ?" for key in fields.keys())
+-        values = list(fields.values()) + [telegram_id]
+-        cur.execute(f"UPDATE users SET {set_clause} WHERE telegram_id = ?", values)
+-        return cur.rowcount > 0
++    try:
++        client = supa.get_client()
++        res = client.table("users") \
++            .update(fields) \
++            .eq("telegram_id", str(telegram_id)) \
++            .execute()
++        return bool(res.data)
++    except Exception as e:
++        logger.error(f"updateUser error: {e}")
++        return False
+ 
+ 
+ def setUserState(telegram_id, state):
+-    with get_db() as conn:
+-        cur = conn.cursor()
++    """تعيين حالة المستخدم"""
++    try:
++        client = supa.get_client()
++        # التأكد من وجود المستخدم أولاً
+         user = getUserByTelegramId(telegram_id)
+         if not user:
+-            cur.execute("INSERT OR IGNORE INTO users (telegram_id, created_at) VALUES (?, ?)",
+-                        (telegram_id, datetime.now(timezone.utc).isoformat()))
+-        cur.execute("UPDATE users SET state = ? WHERE telegram_id = ?", (state, telegram_id))
++            supa.upsert_user(
++                telegram_id=int(telegram_id),
++                username="",
++                first_name="",
++                last_name=""
++            )
++        client.table("users") \
++            .update({"state": state}) \
++            .eq("telegram_id", str(telegram_id)) \
++            .execute()
++    except Exception as e:
++        logger.error(f"setUserState error: {e}")
+ 
+ 
+ def getUserState(telegram_id):
+-    with get_db() as conn:
+-        cur = conn.cursor()
+-        cur.execute("SELECT state FROM users WHERE telegram_id = ?", (telegram_id,))
+-        row = cur.fetchone()
+-        return row[0] if row else None
++    """الحصول على حالة المستخدم"""
++    try:
++        user = getUserByTelegramId(telegram_id)
++        if user:
++            return user.get("state")
++    except Exception as e:
++        logger.error(f"getUserState error: {e}")
++    return None
+ 
+ 
+ def deleteUser(telegram_id):
+-    with get_db() as conn:
+-        cur = conn.cursor()
+-        cur.execute("DELETE FROM users WHERE telegram_id = ?", (telegram_id,))
+-        return cur.rowcount > 0
++    """حذف المستخدم"""
++    try:
++        client = supa.get_client()
++        res = client.table("users") \
++            .delete() \
++            .eq("telegram_id", str(telegram_id)) \
++            .execute()
++        return bool(res.data)
++    except Exception as e:
++        logger.error(f"deleteUser error: {e}")
++        return False
+ 
+ 
+ def insertNewUser(telegram_id, username):
++    """إدراج مستخدم جديد أو تحديثه"""
+     try:
+-        with get_db() as conn:
+-            cur = conn.cursor()
+-            cur.execute("""
+-                INSERT OR IGNORE INTO users (telegram_id, username, created_at)
+-                VALUES (?, ?, ?)
+-            """, (telegram_id, username, datetime.now(timezone.utc).isoformat()))
+-    except sqlite3.OperationalError as e:
+-        print(f"Database error in insertNewUser: {e}")
+-        # Try to initialize database if table doesn't exist
+-        if "no such table" in str(e):
+-            print("Initializing database tables...")
+-            init_db()
+-            # Retry the operation
+-            with get_db() as conn:
+-                cur = conn.cursor()
+-                cur.execute("""
+-                    INSERT OR IGNORE INTO users (telegram_id, username, created_at)
+-                    VALUES (?, ?, ?)
+-                """, (telegram_id, username, datetime.now(timezone.utc).isoformat()))
++        supa.upsert_user(
++            telegram_id=int(telegram_id),
++            username=username or "",
++            first_name="",
++            last_name=""
++        )
++    except Exception as e:
++        logger.error(f"insertNewUser error: {e}")
+ 
+ 
+ # =========================
+@@ -183,44 +110,38 @@ def insertNewUser(telegram_id, username):
+ # =========================
+ 
+ def insertTransaction(telegram_id, value, action_type, provider_type, transfer_num):
++    """إدراج معاملة جديدة"""
+     try:
+-        with get_db() as conn:
+-            cur = conn.cursor()
+-
+-            cur.execute("""
+-                INSERT INTO transactions
+-                (telegram_id, type, method, amount, transfer_num, status, created_at)
+-                VALUES (?, ?, ?, ?, ?, ?, ?)
+-            """, (
+-                telegram_id,
+-                action_type,
+-                provider_type,
+-                value,
+-                transfer_num,
+-                "pending",
+-                datetime.utcnow().isoformat()
+-            ))
+-
+-            return cur.lastrowid
+-
++        client = supa.get_client()
++        res = client.table("transactions").insert({
++            "telegram_id": str(telegram_id),
++            "type": action_type,
++            "method": provider_type,
++            "amount_syp": value,
++            "wallet_address": transfer_num,
++            "status": "pending",
++            "created_at": datetime.now(timezone.utc).isoformat()
++        }).execute()
++        if res.data and len(res.data) > 0:
++            return res.data[0].get("id")
++        return None
+     except Exception as e:
+-        print("DB ERROR:", e)
++        logger.error(f"insertTransaction error: {e}")
+         return None
+ 
+ 
+ def add_transaction(user_id, type_, amount):
++    """إضافة معاملة يدوية"""
+     return insertTransaction(user_id, amount, type_, "manual", "-")
+ 
+ 
+-# 🔥🔥🔥 الإصلاح النهائي - قراءة من Supabase
+ def get_user_transactions(telegram_id, tx_type=None):
++    """الحصول على معاملات المستخدم"""
+     try:
+-        import supabase_integration as supa
+         client = supa.get_client()
+-
+         query = client.table("transactions") \
+             .select("*") \
+-            .eq("telegram_id", telegram_id) \
++            .eq("telegram_id", str(telegram_id)) \
+             .order("created_at", desc=True)
+ 
+         if tx_type:
+@@ -229,7 +150,7 @@ def get_user_transactions(telegram_id, tx_type=None):
+         res = query.execute()
+         return res.data if res.data else []
+     except Exception as e:
+-        print(f"❌ get_user_transactions error: {e}")
++        logger.error(f"get_user_transactions error: {e}")
+         return []
+ 
+ 
+@@ -238,22 +159,34 @@ def get_user_transactions(telegram_id, tx_type=None):
+ # =========================
+ 
+ def get_all_users(limit=100):
+-    with get_db() as conn:
+-        cur = conn.cursor()
+-        cur.execute("SELECT * FROM users ORDER BY id DESC LIMIT ?", (limit,))
+-        return [dict(row) for row in cur.fetchall()]
++    """الحصول على جميع المستخدمين"""
++    try:
++        client = supa.get_client()
++        res = client.table("users") \
++            .select("*") \
++            .order("created_at", desc=True) \
++            .limit(limit) \
++            .execute()
++        return res.data if res.data else []
++    except Exception as e:
++        logger.error(f"get_all_users error: {e}")
++        return []
+ 
+ 
+ def get_transactions_by_type(tx_type):
+-    with get_db() as conn:
+-        cur = conn.cursor()
+-        cur.execute("""
+-            SELECT * FROM transactions
+-            WHERE type = ?
+-            ORDER BY id DESC
+-            LIMIT 100
+-        """, (tx_type,))
+-        return [dict(row) for row in cur.fetchall()]
++    """الحصول على المعاملات حسب النوع"""
++    try:
++        client = supa.get_client()
++        res = client.table("transactions") \
++            .select("*") \
++            .eq("type", tx_type) \
++            .order("created_at", desc=True) \
++            .limit(100) \
++            .execute()
++        return res.data if res.data else []
++    except Exception as e:
++        logger.error(f"get_transactions_by_type error: {e}")
++        return []
+ 
+ 
+ # =========================
+@@ -261,30 +194,34 @@ def get_transactions_by_type(tx_type):
+ # =========================
+ 
+ def update_transaction_status(transaction_id, transaction_type, status):
++    """تحديث حالة المعاملة"""
+     try:
+-        with get_db() as conn:
+-            cur = conn.cursor()
+-            cur.execute("""
+-                UPDATE transactions
+-                SET status = ?
+-                WHERE id = ? AND type = ?
+-            """, (status, transaction_id, transaction_type))
+-
+-            return True
+-    except:
++        client = supa.get_client()
++        client.table("transactions") \
++            .update({"status": status}) \
++            .eq("id", transaction_id) \
++            .eq("type", transaction_type) \
++            .execute()
++        return True
++    except Exception as e:
++        logger.error(f"update_transaction_status error: {e}")
+         return False
+ 
+ 
+ def get_transaction_by_id(transaction_id, transaction_type):
+-    with get_db() as conn:
+-        cur = conn.cursor()
+-        cur.execute("""
+-            SELECT * FROM transactions
+-            WHERE id = ? AND type = ?
+-        """, (transaction_id, transaction_type))
+-
+-        row = cur.fetchone()
+-        return dict(row) if row else None
++    """الحصول على معاملة بالمعرف والنوع"""
++    try:
++        client = supa.get_client()
++        res = client.table("transactions") \
++            .select("*") \
++            .eq("id", transaction_id) \
++            .eq("type", transaction_type) \
++            .maybe_single() \
++            .execute()
++        return res.data if res.data else None
++    except Exception as e:
++        logger.error(f"get_transaction_by_id error: {e}")
++        return None
+ 
+ 
+ # =========================
+@@ -292,13 +229,16 @@ def get_transaction_by_id(transaction_id, transaction_type):
+ # =========================
+ 
+ def update_user_balance(telegram_id, new_balance):
+-    with get_db() as conn:
+-        cur = conn.cursor()
+-        cur.execute("""
+-            UPDATE users
+-            SET balance = ?
+-            WHERE telegram_id = ?
+-        """, (new_balance, telegram_id))
++    """تحديث رصيد المستخدم"""
++    try:
++        supa.update_user_balance(telegram_id, new_balance)
++    except Exception as e:
++        logger.error(f"update_user_balance error: {e}")
++
++
++def get_user_balance(telegram_id):
++    """الحصول على رصيد المستخدم"""
++    return supa.get_user_balance(telegram_id)
+ 
+ 
+ # =========================
+@@ -306,55 +246,113 @@ def update_user_balance(telegram_id, new_balance):
+ # =========================
+ 
+ def set_user_agreed(telegram_id: int):
++    """تسجيل موافقة المستخدم على الشروط"""
+     try:
+-        with get_db() as conn:
+-            cur = conn.cursor()
+-
+-            cur.execute("""
+-                INSERT OR IGNORE INTO users (telegram_id, agreed_terms, created_at)
+-                VALUES (?, 0, datetime('now'))
+-            """, (telegram_id,))
+-
+-            cur.execute("""
+-                UPDATE users
+-                SET agreed_terms = 1
+-                WHERE telegram_id = ?
+-            """, (telegram_id,))
+-    except sqlite3.OperationalError as e:
+-        print(f"Database error in set_user_agreed: {e}")
+-        # Try to initialize database if table doesn't exist
+-        if "no such table" in str(e):
+-            print("Initializing database tables...")
+-            init_db()
+-            # Retry the operation
+-            with get_db() as conn:
+-                cur = conn.cursor()
+-                cur.execute("""
+-                    INSERT OR IGNORE INTO users (telegram_id, agreed_terms, created_at)
+-                    VALUES (?, 0, datetime('now'))
+-                """, (telegram_id,))
+-                cur.execute("""
+-                    UPDATE users
+-                    SET agreed_terms = 1
+-                    WHERE telegram_id = ?
+-                """, (telegram_id,))
++        supa.upsert_user(
++            telegram_id=telegram_id,
++            username="",
++            first_name="",
++            last_name=""
++        )
++        client = supa.get_client()
++        client.table("users") \
++            .update({"agreed_terms": True}) \
++            .eq("telegram_id", str(telegram_id)) \
++            .execute()
++    except Exception as e:
++        logger.error(f"set_user_agreed error: {e}")
+ 
+ 
+ def has_user_agreed(telegram_id: int) -> bool:
+-    with get_db() as conn:
+-        cur = conn.cursor()
++    """التحقق من موافقة المستخدم على الشروط"""
++    try:
++        user = getUserByTelegramId(telegram_id)
++        if user:
++            return bool(user.get("agreed_terms", False))
++    except Exception as e:
++        logger.error(f"has_user_agreed error: {e}")
++    return False
++
++
++# =========================
++# MESSAGE SYSTEM
++# =========================
++
++def insertMessageToAdmin(telegram_id, message):
++    """إدراج رسالة للأدمن"""
++    try:
++        supa.save_message(telegram_id, "", message, "to_admin")
++    except Exception as e:
++        logger.error(f"insertMessageToAdmin error: {e}")
+ 
+-        try:
+-            cur.execute("""
+-                SELECT agreed_terms FROM users
+-                WHERE telegram_id = ?
+-            """, (telegram_id,))
+-        except:
+-            return False
+ 
+-        row = cur.fetchone()
++# =========================
++# LEGACY FUNCTIONS (for backward compatibility)
++# =========================
++
++def getDatabaseConnection():
++    """دالة متوافقة مع الإصدارات السابقة - لم تعد تستخدم SQLite"""
++    return None
++
++
++def init_db():
++    """دالة متوافقة مع الإصدارات السابقة - لم تعد تحتاج SQLite"""
++    pass
++
+ 
+-        if not row:
+-            return False
++def getUserIdByTelegramId(telegram_id):
++    """الحصول على معرف المستخدم الداخلي"""
++    try:
++        user = getUserByTelegramId(telegram_id)
++        if user:
++            return {"id": user.get("id")}
++    except Exception as e:
++        logger.error(f"getUserIdByTelegramId error: {e}")
++    return None
++
++
++def insertNewBalance(telegram_id, new_balance):
++    """تحديث رصيد المستخدم (متوافق مع الإصدارات السابقة)"""
++    try:
++        supa.update_user_balance(telegram_id, new_balance)
++    except Exception as e:
++        logger.error(f"insertNewBalance error: {e}")
+ 
+-        return row["agreed_terms"] == 1
+\ No newline at end of file
++
++def insertNewAccountBalance(telegram_id, new_account_balance):
++    """تحديث رصيد حساب iChancy للمستخدم"""
++    try:
++        client = supa.get_client()
++        client.table("users") \
++            .update({"account_balance": new_account_balance}) \
++            .eq("telegram_id", str(telegram_id)) \
++            .execute()
++    except Exception as e:
++        logger.error(f"insertNewAccountBalance error: {e}")
++
++
++def update_user_account_balance(user_id, new_account_balance):
++    """تحديث رصيد حساب المستخدم بمعرف المستخدم الداخلي"""
++    try:
++        client = supa.get_client()
++        client.table("users") \
++            .update({"account_balance": new_account_balance}) \
++            .eq("id", user_id) \
++            .execute()
++    except Exception as e:
++        logger.error(f"update_user_account_balance error: {e}")
++
++
++def insertInTransactionAccount(user_id, status, tx_type, value=0):
++    """إدراج معاملة حساب"""
++    try:
++        client = supa.get_client()
++        client.table("transactions").insert({
++            "user_id": str(user_id),
++            "type": tx_type,
++            "amount_syp": abs(value),
++            "status": status,
++            "created_at": datetime.now(timezone.utc).isoformat()
++        }).execute()
++    except Exception as e:
++        logger.error(f"insertInTransactionAccount error: {e}")
+diff --git a/bot_src/supabase_integration.py b/bot_src/supabase_integration.py
+index 5f3cae8..12c8463 100644
+--- a/bot_src/supabase_integration.py
++++ b/bot_src/supabase_integration.py
+@@ -146,7 +146,7 @@ def upsert_ichancy_details(telegram_id, username, email, password, player_id, ex
+         if extra and isinstance(extra, dict):
+             account_data.update(extra)
+ 
+-        return get_client().table("users_ichancy_details").upsert(account_data).execute()
++        return get_client().table("users_ichancy_details").upsert(account_data, on_conflict="telegram_id").execute()
+     except Exception as e:
+         logger.error(f"upsert_ichancy_details error: {e}")
+         return None
+@@ -617,28 +617,3 @@ def set_wheel_extra_spins(telegram_id, count: int):
+         }, on_conflict="telegram_id").execute()
+     except Exception as e:
+         logger.error(f"set_wheel_extra_spins error: {e}")
+-
+-
+-def get_wheel_extra_spins(telegram_id) -> int:
+-    try:
+-        res = get_client().table("wheel_spins") \
+-            .select("extra_spins") \
+-            .eq("telegram_id", str(telegram_id)) \
+-            .maybe_single() \
+-            .execute()
+-        if res.data:
+-            return int(res.data.get("extra_spins") or 0)
+-    except Exception as e:
+-        logger.error(f"get_wheel_extra_spins error: {e}")
+-    return 0
+-
+-
+-def set_wheel_extra_spins(telegram_id, count: int):
+-    try:
+-        get_client().table("wheel_spins").upsert({
+-            "telegram_id": str(telegram_id),
+-            "extra_spins": max(0, int(count)),
+-            "updated_at": datetime.now(timezone.utc).isoformat(),
+-        }, on_conflict="telegram_id").execute()
+-    except Exception as e:
+-        logger.error(f"set_wheel_extra_spins error: {e}")
