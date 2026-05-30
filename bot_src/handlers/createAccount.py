@@ -199,7 +199,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 def conversationHandler():
     conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(button_create_account_handler, pattern='^create_account$')],
+        entry_points=[CallbackQueryHandler(button_create_account_handler, pattern='^ichancy_create_account$')],
         states={
             NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
             PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_password)],
