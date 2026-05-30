@@ -4,6 +4,7 @@ import store , config.telegram
 MESSAGE = range(1)
 async def button_admin_message_handler(update : Update , context:ContextTypes.DEFAULT_TYPE):
     if update.callback_query.data == 'admin_message':
+        await update.callback_query.answer()
         await update.callback_query.message.reply_text("ارسل رسالتك او ارسل صورة هنا") 
     return MESSAGE
 
@@ -12,8 +13,11 @@ async def get_message(update : Update , context:ContextTypes.DEFAULT_TYPE):
     telegram_id = update.message.from_user.id
     store.insertMessageToAdmin(telegram_id,message)
     await update.message.reply_text("تم إرسال الرسالة للأدمن") 
-    await context.bot.send_message(chat_id=config.telegram.ADMIN_ID, text=message)
-    ConversationHandler.END
+    try:
+        await context.bot.send_message(chat_id=config.telegram.ADMIN_TELEGRAM_ID, text=message)
+    except Exception as e:
+        print(f"Error sending message to admin: {e}")
+    return ConversationHandler.END
 
 async def cancel(update : Update , context:ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text('تم إلغاء عملية ارسال رسالة للأدمن')
