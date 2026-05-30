@@ -36,23 +36,20 @@ class ReferralHandler:
         # الحصول على معلومات المستخدم
         user = store.getUserByTelegramId(user_id)
         if not user:
-            await update.callback_query.answer("❌ لم يتم العثور على حسابك", show_alert=True)
-            return
-        
+            # إنشاء المستخدم إذا لم يكن موجوداً
+            try:
+                store.insertNewUser(user_id, update.effective_user.username or "مستخدم")
+                user = store.getUserByTelegramId(user_id)
+            except Exception:
+                pass
+
         # توليد كود إحالة إذا لم يكن موجوداً
-        if not user.get('referral_code'):
-            referral_code = ReferralHandler.generate_referral_code(user_id)
-            # حفظ كود الإحالة (تحتاج لتعديل store لإضافة هذا الحقل)
-            # store.update_user_referral_code(user_id, referral_code)
-        
-        # حساب الإحالات (تحتاج لتعديل store لإضافة هذه الوظيفة)
-        # referral_count = store.get_referral_count(user_id)
-        # referral_earnings = store.get_referral_earnings(user_id)
-        
+        referral_code = helpers.generate_referral_code(user_id)
+
         # إنشاء رابط الإحالة
         bot_username = context.bot.username
-        referral_link = f"https://t.me/@jado93_bot?start=ref_{user_id}"
-        
+        referral_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
+
         # رسالة الإحالة
         stats_message = f"""
 📊 **إحصاءات نظام الإحالات**
@@ -85,7 +82,6 @@ class ReferralHandler:
         
         keyboard = [
             [
-            
                 InlineKeyboardButton("📊 تفاصيل الإحالات", callback_data='referral_details'),
             ],
             [
@@ -104,11 +100,18 @@ class ReferralHandler:
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         if update.callback_query:
-            await update.callback_query.edit_message_text(
-                stats_message,
-                reply_markup=reply_markup,
-                parse_mode='Markdown'
-            )
+            try:
+                await update.callback_query.edit_message_text(
+                    stats_message,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
+            except Exception:
+                await update.callback_query.message.reply_text(
+                    stats_message,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
         else:
             await update.message.reply_text(
                 stats_message,
@@ -121,7 +124,7 @@ class ReferralHandler:
         """مشاركة رابط الإحالة"""
         user_id = str(update.effective_user.id)
         bot_username = context.bot.username
-        referral_link = f"https://t.me/@jado93_bot?start=ref_{user_id}"
+        referral_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
         
         share_message = f"""
 🌟 **انضم إلى iChancy Bot واحصل على مكافآت!**
@@ -140,7 +143,6 @@ class ReferralHandler:
         
         keyboard = [
             [
-                InlineKeyboardButton("📤 مشاركة", url=f"tg://msg?text={share_message}"),
                 InlineKeyboardButton("📋 نسخ الرابط", callback_data='copy_referral_link')
             ],
             [
@@ -150,18 +152,26 @@ class ReferralHandler:
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await update.callback_query.edit_message_text(
-            "📤 **شارك رابط الإحالة الآن**\n\nاضغط على زر المشاركة لإرسال الرابط للأصدقاء:",
-            reply_markup=reply_markup,
-            parse_mode='Markdown'
-        )
+        query = update.callback_query
+        try:
+            await query.edit_message_text(
+                "📤 **شارك رابط الإحالة الآن**\n\nاضغط على زر النسخ لنسخ الرابط:",
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+        except Exception:
+            await query.message.reply_text(
+                "📤 **شارك رابط الإحالة الآن**\n\nاضغط على زر النسخ لنسخ الرابط:",
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
     
     @staticmethod
     async def copy_referral_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """نسخ رابط الإحالة"""
         user_id = str(update.effective_user.id)
         bot_username = context.bot.username
-        referral_link = f"https://t.me/@jado93_bot?start=ref_{user_id}"
+        referral_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
         
         await update.callback_query.answer(
             f"✅ تم نسخ الرابط: {referral_link}",
@@ -172,8 +182,7 @@ class ReferralHandler:
     async def handle_referral_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """معالجة استدعاءات نظام الإحالة"""
         query = update.callback_query
-        await query.answer()
-        
+
         data = query.data
         
         if data == 'referral':
@@ -183,64 +192,113 @@ class ReferralHandler:
         elif data == 'copy_referral_link':
             await ReferralHandler.copy_referral_link(update, context)
         elif data == 'referral_details':
-            await query.edit_message_text(
-                "📊 **تفاصيل نظام الإحالة**\n\n"
-                "• نسبة الربح: 10% من أول إيداع\n"
-                "• الحد الأدنى للإيداع: 10,000 ليرة\n"
-                "• المكافآت الشهرية لأكثر الإحالات\n"
-                "• المسابقات الأسبوعية\n\n"
-                "🔙 العودة للقائمة الرئيسية للإحالة",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔙 رجوع", callback_data='referral')]
-                ]),
-                parse_mode='Markdown'
-            )
+            try:
+                await query.edit_message_text(
+                    "📊 **تفاصيل نظام الإحالة**\n\n"
+                    "• نسبة الربح: 10% من أول إيداع\n"
+                    "• الحد الأدنى للإيداع: 10,000 ليرة\n"
+                    "• المكافآت الشهرية لأكثر الإحالات\n"
+                    "• المسابقات الأسبوعية\n\n"
+                    "🔙 العودة للقائمة الرئيسية للإحالة",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔙 رجوع", callback_data='referral')]
+                    ]),
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                logger.error(f"Error in referral_details: {e}")
         elif data == 'referral_earnings':
-            await query.edit_message_text(
-                "💰 **أرباحي من الإحالات**\n\n"
-                "📅 اليوم: 0 ليرة\n"
-                "📅 هذا الأسبوع: 0 ليرة\n"
-                "📅 هذا الشهر: 0 ليرة\n"
-                "💰 الإجمالي: 0 ليرة\n\n"
-                "🔙 العودة للقائمة الرئيسية للإحالة",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔙 رجوع", callback_data='referral')]
-                ]),
-                parse_mode='Markdown'
-            )
+            try:
+                await query.edit_message_text(
+                    "💰 **أرباحي من الإحالات**\n\n"
+                    "📅 اليوم: 0 ليرة\n"
+                    "📅 هذا الأسبوع: 0 ليرة\n"
+                    "📅 هذا الشهر: 0 ليرة\n"
+                    "💰 الإجمالي: 0 ليرة\n\n"
+                    "🔙 العودة للقائمة الرئيسية للإحالة",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔙 رجوع", callback_data='referral')]
+                    ]),
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                logger.error(f"Error in referral_earnings: {e}")
         elif data == 'my_referrals':
-            await query.edit_message_text(
-                "👥 **قائمة أحالتي**\n\n"
-                "📭 لا توجد إحالات حتى الآن\n\n"
-                "🔗 شارك رابط الإحالة لبدء الربح!",
-                reply_markup=reply_markup,
-
-                parse_mode='Markdown'
-            )
+            try:
+                await query.edit_message_text(
+                    "👥 **قائمة أحالتي**\n\n"
+                    "📭 لا توجد إحالات حتى الآن\n\n"
+                    "🔗 شارك رابط الإحالة لبدء الربح!",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📤 مشاركة الرابط", callback_data='share_referral')],
+                        [InlineKeyboardButton("🔙 رجوع", callback_data='referral')]
+                    ]),
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                logger.error(f"Error in my_referrals: {e}")
         elif data == 'referral_contest':
-            await query.edit_message_text(
-                "🏆 **مسابقة هذا الشهر**\n\n"
-                "🥇 المركز الأول: 50,000 ليرة\n"
-                "🥈 المركز الثاني: 30,000 ليرة\n"
-                "🥉 المركز الثالث: 20,000 ليرة\n\n"
-                "📅 تنتهي المسابقة في نهاية الشهر\n"
-                "📊 المنافسة ساخنة! شارك الآن",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📤 شارك الآن", callback_data='share_referral')],
-                    [InlineKeyboardButton("🔙 رجوع", callback_data='referral')]
-                ]),
-                parse_mode='Markdown'
-            )
+            try:
+                await query.edit_message_text(
+                    "🏆 **مسابقة هذا الشهر**\n\n"
+                    "🥇 المركز الأول: 50,000 ليرة\n"
+                    "🥈 المركز الثاني: 30,000 ليرة\n"
+                    "🥉 المركز الثالث: 20,000 ليرة\n\n"
+                    "📅 تنتهي المسابقة في نهاية الشهر\n"
+                    "📊 المنافسة ساخنة! شارك الآن",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📤 شارك الآن", callback_data='share_referral')],
+                        [InlineKeyboardButton("🔙 رجوع", callback_data='referral')]
+                    ]),
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                logger.error(f"Error in referral_contest: {e}")
         elif data == 'referral_rank':
-            await query.edit_message_text(
-                "📈 **ترتيبي الشهري**\n\n"
-                "🏆 ترتيبك الحالي: غير محدد\n"
-                "👥 عدد الإحالات: 0\n"
-                "💰 أرباحك: 0 ليرة\n\n"
-                "🔥 تنافس مع الآخرين واربح جوائز!",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📤 زيادة الإحالات", callback_data='share_referral')],
-                    [InlineKeyboardButton("🔙 رجوع", callback_data='referral')]
-                ]),
-                parse_mode='Markdown'
-            )
+            try:
+                await query.edit_message_text(
+                    "📈 **ترتيبي الشهري**\n\n"
+                    "🏆 ترتيبك الحالي: غير محدد\n"
+                    "👥 عدد الإحالات: 0\n"
+                    "💰 أرباحك: 0 ليرة\n\n"
+                    "🔥 تنافس مع الآخرين واربح جوائز!",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📤 زيادة الإحالات", callback_data='share_referral')],
+                        [InlineKeyboardButton("🔙 رجوع", callback_data='referral')]
+                    ]),
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                logger.error(f"Error in referral_rank: {e}")
+        elif data == 'gift_system':
+            try:
+                await query.edit_message_text(
+                    "🎁 **نظام الهدايا والإهداء**\n\n"
+                    "✨ **ميزات النظام:**\n"
+                    "• إهداء الرصيد للأصدقاء\n"
+                    "• أكواد هدايا قابلة للاستخدام\n"
+                    "• عروض وخصومات حصرية\n"
+                    "• مسابقات وجوائز أسبوعية\n\n"
+                    "🔙 العودة للوحة الإحالة",
+                    reply_markup=InlineKeyboardMarkup([
+                        [
+                            InlineKeyboardButton("🎁 إهداء رصيد", callback_data='send_gift'),
+                            InlineKeyboardButton("🎫 كود هدية", callback_data='gift_code')
+                        ],
+                        [InlineKeyboardButton("🔙 رجوع", callback_data='referral')]
+                    ]),
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                logger.error(f"Error in gift_system: {e}")
+        elif data == 'referral_image' or data == 'referral_text':
+            try:
+                user_id = str(update.effective_user.id)
+                bot_username = context.bot.username
+                referral_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
+                await query.answer(
+                    f"📋 رابط الإحالة: {referral_link}",
+                    show_alert=True
+                )
+            except Exception as e:
+                logger.error(f"Error in referral_image/text: {e}")
