@@ -161,9 +161,13 @@ def get_ichancy_details_by_telegram_id(telegram_id):
             .eq("telegram_id", str(telegram_id)) \
             .maybe_single() \
             .execute()
-        # result.data may be None or a dict when using maybe_single()
-        if result.data:
+        # result may be None in rare cases (threading issues, client state)
+        if result is not None and result.data:
             return result.data
+        # If result is None, try fallback from users table
+        if result is None:
+            logger.warning(f"Supabase query returned None for telegram_id={telegram_id}, trying users table fallback")
+            return _get_ichancy_details_from_users(telegram_id)
         return None
     except Exception as e:
         err_str = str(e)

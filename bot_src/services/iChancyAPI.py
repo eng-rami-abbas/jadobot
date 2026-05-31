@@ -222,6 +222,44 @@ class iChancyAPI:
     # =============================
     # BROWSER-BASED AUTHENTICATION
     # =============================
+    async def _wait_for_cloudflare_challenge(self, page, max_wait=30):
+        """
+        Wait for Cloudflare challenge/turnstile to resolve.
+        Cloudflare may show a 'Checking your browser' page that auto-resolves
+        if stealth mode is working. We need to wait for it to finish.
+        """
+        try:
+            # Check if we're on a Cloudflare challenge page
+            for _ in range(max_wait):
+                page_title = await page.title()
+                current_url = page.url
+
+                # Common Cloudflare challenge indicators
+                if any(indicator in page_title.lower() for indicator in
+                       ['just a moment', 'attention required', 'checking', 'cloudflare']):
+                    logger.info(f"Cloudflare challenge detected (title: {page_title}), waiting for resolution...")
+                    await page.wait_for_timeout(2000)
+                    continue
+
+                # Check for Cloudflare challenge elements in DOM
+                challenge_el = await page.query_selector(
+                    '#challenge-running, .cf-browser-verification, #cf-challenge-running, '
+                    'iframe[src*="challenges.cloudflare.com"]'
+                )
+                if challenge_el:
+                    logger.info("Cloudflare challenge element found, waiting for resolution...")
+                    await page.wait_for_timeout(2000)
+                    continue
+
+                # No challenge detected - we're good
+                break
+
+            # Extra wait for page to fully settle after challenge
+            await page.wait_for_timeout(2000)
+
+        except Exception as e:
+            logger.warning(f"Error during Cloudflare challenge wait: {e}")
+
     async def _browser_signin(self, username, password):
         """
         Sign in using Playwright browser automation with stealth mode.
@@ -242,8 +280,9 @@ class iChancyAPI:
                 # Create context with realistic viewport and user agent
                 context = await browser.new_context(
                     viewport={"width": 1920, "height": 1080},
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0",
                     locale="en-US",
+                    java_script_enabled=True,
                 )
 
                 page = await context.new_page()
@@ -253,24 +292,44 @@ class iChancyAPI:
                     await stealth_async(page)
                     logger.info("Stealth mode applied to Firefox browser page")
 
-                # Navigate to login page
+                # Navigate to login page - use domcontentloaded first, then wait for JS to render
                 logger.info(f"Navigating to {self.BASE_URL}/login with Firefox ...")
                 try:
-                    await page.goto(f"{self.BASE_URL}/login", wait_until="networkidle", timeout=60000)
+                    await page.goto(f"{self.BASE_URL}/login", wait_until="domcontentloaded", timeout=60000)
                 except Exception as nav_err:
-                    logger.warning(f"networkidle timeout on login page, trying domcontentloaded: {nav_err}")
+                    logger.warning(f"domcontentloaded timeout on login page: {nav_err}")
                     try:
-                        await page.goto(f"{self.BASE_URL}/login", wait_until="domcontentloaded", timeout=60000)
-                        await page.wait_for_timeout(5000)
+                        await page.goto(f"{self.BASE_URL}/login", wait_until="commit", timeout=60000)
                     except Exception as nav_err2:
                         logger.error(f"Failed to navigate to login page: {nav_err2}")
                         await browser.close()
                         return False
 
-                # Wait for the login form to appear
-                logger.info("Login page loaded, filling credentials...")
+                # Wait for Cloudflare challenge to resolve (if any)
+                logger.info("Waiting for Cloudflare challenge resolution (if any)...")
+                await self._wait_for_cloudflare_challenge(page, max_wait=30)
+
+                # Wait for the SPA to fully render the login form
+                # This is critical - the page loads as a SPA and needs time for JS to render
+                logger.info("Waiting for login form to render...")
+                await page.wait_for_timeout(3000)
+
+                # Try to wait for networkidle to ensure all JS resources loaded
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=15000)
+                except Exception:
+                    logger.warning("Timeout waiting for networkidle, continuing with form detection...")
+
+                # Additional wait for SPA rendering
+                await page.wait_for_timeout(2000)
+
+                # Log current page state for debugging
+                current_url = page.url
+                page_title = await page.title()
+                logger.info(f"Current page: URL={current_url}, Title={page_title}")
 
                 # Try multiple selectors for the username/email field
+                # Use wait_for_selector with timeout instead of query_selector for better SPA handling
                 username_selectors = [
                     'input[name="username"]',
                     'input[type="email"]',
@@ -278,25 +337,85 @@ class iChancyAPI:
                     'input[placeholder*="email" i]',
                     'input[id*="user" i]',
                     'input[id*="email" i]',
+                    'input[formcontrolname*="user" i]',
+                    'input[formcontrolname*="email" i]',
+                    'input[name="login"]',
+                    'input[autocomplete="username"]',
+                    'input[autocomplete="email"]',
                 ]
 
                 username_filled = False
+                username_element = None
+
+                # First pass: try wait_for_selector with short timeout for each
                 for selector in username_selectors:
                     try:
-                        element = await page.query_selector(selector)
+                        element = await page.wait_for_selector(selector, timeout=3000)
                         if element:
-                            await element.click()
-                            await element.fill(username)
-                            username_filled = True
-                            logger.info(f"Filled username with selector: {selector}")
+                            username_element = element
                             break
                     except Exception:
                         continue
 
+                # If no element found yet, try a broader approach - wait for ANY input to appear
+                if not username_element:
+                    logger.info("Specific selectors not found, waiting for any input field to appear...")
+                    try:
+                        await page.wait_for_selector('input', timeout=10000)
+                        # Now check all inputs and find the username-like one
+                        all_inputs = await page.query_selector_all('input')
+                        logger.info(f"Found {len(all_inputs)} input elements on page")
+                        for inp in all_inputs:
+                            try:
+                                inp_type = await inp.get_attribute('type') or ''
+                                inp_name = await inp.get_attribute('name') or ''
+                                inp_placeholder = await inp.get_attribute('placeholder') or ''
+                                inp_id = await inp.get_attribute('id') or ''
+                                inp_visible = await inp.is_visible()
+                                logger.info(f"  Input: type={inp_type}, name={inp_name}, "
+                                            f"placeholder={inp_placeholder}, id={inp_id}, visible={inp_visible}")
+                                # Pick the first visible text/email input that looks like a username field
+                                if inp_visible and inp_type not in ('password', 'hidden', 'submit', 'checkbox', 'radio'):
+                                    if any(kw in (inp_name + inp_placeholder + inp_id + inp_type).lower()
+                                           for kw in ['user', 'email', 'login', 'name']):
+                                        username_element = inp
+                                        break
+                            except Exception:
+                                continue
+
+                        # If still not found, just use the first visible non-password input
+                        if not username_element:
+                            for inp in all_inputs:
+                                try:
+                                    inp_type = await inp.get_attribute('type') or ''
+                                    inp_visible = await inp.is_visible()
+                                    if inp_visible and inp_type not in ('password', 'hidden', 'submit', 'checkbox', 'radio'):
+                                        username_element = inp
+                                        break
+                                except Exception:
+                                    continue
+                    except Exception as e:
+                        logger.error(f"Error waiting for input elements: {e}")
+
+                if username_element:
+                    try:
+                        await username_element.click()
+                        await page.wait_for_timeout(200)
+                        await username_element.fill(username)
+                        username_filled = True
+                        logger.info("Filled username field successfully")
+                    except Exception as e:
+                        logger.error(f"Error filling username: {e}")
+
                 if not username_filled:
                     logger.error("Could not find username/email input field")
-                    # Take screenshot for debugging
+                    # Take screenshot and log page content for debugging
                     try:
+                        current_url = page.url
+                        page_title = await page.title()
+                        html_content = await page.content()
+                        logger.error(f"Page debug: URL={current_url}, Title={page_title}")
+                        logger.error(f"Page HTML (first 3000 chars): {html_content[:3000]}")
                         await page.screenshot(path="/tmp/login_page_error.png")
                         logger.info("Screenshot saved to /tmp/login_page_error.png")
                     except Exception:
@@ -310,39 +429,75 @@ class iChancyAPI:
                     'input[type="password"]',
                     'input[placeholder*="password" i]',
                     'input[id*="password" i]',
+                    'input[formcontrolname*="password" i]',
+                    'input[autocomplete="current-password"]',
                 ]
 
                 password_filled = False
+                password_element = None
+
+                # First try specific selectors with wait
                 for selector in password_selectors:
                     try:
-                        element = await page.query_selector(selector)
+                        element = await page.wait_for_selector(selector, timeout=3000)
                         if element:
-                            await element.click()
-                            await element.fill(password)
-                            password_filled = True
-                            logger.info(f"Filled password with selector: {selector}")
+                            password_element = element
                             break
                     except Exception:
                         continue
 
+                # Fallback: find any visible password input
+                if not password_element:
+                    try:
+                        all_inputs = await page.query_selector_all('input[type="password"]')
+                        for inp in all_inputs:
+                            try:
+                                if await inp.is_visible():
+                                    password_element = inp
+                                    break
+                            except Exception:
+                                continue
+                    except Exception:
+                        pass
+
+                if password_element:
+                    try:
+                        await password_element.click()
+                        await page.wait_for_timeout(200)
+                        await password_element.fill(password)
+                        password_filled = True
+                        logger.info("Filled password field successfully")
+                    except Exception as e:
+                        logger.error(f"Error filling password: {e}")
+
                 if not password_filled:
                     logger.error("Could not find password input field")
+                    try:
+                        html_content = await page.content()
+                        logger.error(f"Page HTML (first 3000 chars): {html_content[:3000]}")
+                        await page.screenshot(path="/tmp/login_page_error_password.png")
+                    except Exception:
+                        pass
                     await browser.close()
                     return False
 
-                # Click submit button
+                # Click submit button - use wait_for_selector for better reliability
                 submit_selectors = [
                     'button[type="submit"]',
                     'button:has-text("Login")',
+                    'button:has-text("Log in")',
                     'button:has-text("Sign in")',
                     'button:has-text("تسجيل")',
+                    'button:has-text("دخول")',
                     'input[type="submit"]',
+                    'button.btn-primary',
+                    'button.btn:has-text("Login")',
                 ]
 
                 submitted = False
                 for selector in submit_selectors:
                     try:
-                        element = await page.query_selector(selector)
+                        element = await page.wait_for_selector(selector, timeout=3000)
                         if element:
                             await element.click()
                             submitted = True
@@ -351,19 +506,43 @@ class iChancyAPI:
                     except Exception:
                         continue
 
+                # Fallback: find any visible button that might be submit
+                if not submitted:
+                    try:
+                        buttons = await page.query_selector_all('button')
+                        for btn in buttons:
+                            try:
+                                btn_text = await btn.text_content() or ''
+                                btn_visible = await btn.is_visible()
+                                if btn_visible and any(kw in btn_text.lower() for kw in
+                                                        ['login', 'log in', 'sign in', 'submit', 'تسجيل', 'دخول']):
+                                    await btn.click()
+                                    submitted = True
+                                    logger.info(f"Clicked submit button with text: {btn_text}")
+                                    break
+                            except Exception:
+                                continue
+                    except Exception:
+                        pass
+
                 if not submitted:
                     logger.error("Could not find submit button")
                     await browser.close()
                     return False
 
-                # Wait for navigation after login
+                # Wait for navigation after login - use multiple strategies
                 try:
+                    # First wait for any URL change or network activity
                     await page.wait_for_load_state("networkidle", timeout=30000)
                 except Exception:
                     logger.warning("Timeout waiting for networkidle after login, continuing...")
 
-                # Additional wait for any async token storage
-                await page.wait_for_timeout(3000)
+                # Additional wait for any async token storage in SPA
+                await page.wait_for_timeout(5000)
+
+                # Log the URL after login attempt
+                post_login_url = page.url
+                logger.info(f"Post-login URL: {post_login_url}")
 
                 # Extract token from localStorage
                 token_data = await page.evaluate("""() => {
@@ -379,6 +558,29 @@ class iChancyAPI:
                 self.access_token = token_data.get("accessToken")
                 self.refresh_token = token_data.get("refreshToken")
 
+                # If no token in localStorage, try sessionStorage as fallback
+                if not self.access_token:
+                    session_data = await page.evaluate("""() => {
+                        return {
+                            accessToken: sessionStorage.getItem('accessToken') || sessionStorage.getItem('token'),
+                            refreshToken: sessionStorage.getItem('refreshToken'),
+                            allKeys: Object.keys(sessionStorage)
+                        };
+                    }""")
+                    logger.info(f"sessionStorage keys found: {session_data.get('allKeys', [])}")
+                    if session_data.get('accessToken'):
+                        self.access_token = session_data['accessToken']
+                        self.refresh_token = self.refresh_token or session_data.get('refreshToken')
+
+                # If still no token, try to extract from cookies
+                if not self.access_token:
+                    cookies = await context.cookies()
+                    for cookie in cookies:
+                        if 'token' in cookie.get('name', '').lower():
+                            self.access_token = cookie.get('value')
+                            logger.info(f"Found token in cookie: {cookie.get('name')}")
+                            break
+
                 # Extract cookies from browser context
                 iChancyAPI._browser_cookies = await context.cookies()
                 logger.info(f"Extracted {len(iChancyAPI._browser_cookies)} cookies from browser")
@@ -393,7 +595,13 @@ class iChancyAPI:
                     iChancyAPI._last_auth_time = datetime.now()
                     return True
                 else:
-                    logger.error("No access token found in localStorage after login")
+                    logger.error("No access token found in localStorage/sessionStorage/cookies after login")
+                    # Log page content for debugging
+                    try:
+                        final_url = page.url if not browser else "browser closed"
+                        logger.error(f"Final URL before close: {final_url}")
+                    except Exception:
+                        pass
                     return False
 
         except Exception as e:
