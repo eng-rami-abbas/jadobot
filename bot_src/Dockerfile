@@ -34,6 +34,9 @@ RUN apt-get update && apt-get install -y \
     libgtk-3-0 \
     && rm -rf /var/lib/apt/lists/*
 
+# Create non-root user for security FIRST
+RUN useradd --create-home --shell /bin/bash app
+
 # Copy requirements first for better caching
 COPY requirements.txt .
 
@@ -41,15 +44,18 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright Firefox browser
-RUN playwright install firefox --with-deps
+# Install Playwright Firefox browser AS the app user so it's in the right cache
+USER app
+RUN playwright install firefox
+USER root
 
 # Copy application code
 COPY . .
 
-# Create non-root user for security
-RUN useradd --create-home --shell /bin/bash app && \
-    chown -R app:app /app
+# Fix ownership
+RUN chown -R app:app /app
+
+# Switch to app user
 USER app
 
 # Expose port for Railway

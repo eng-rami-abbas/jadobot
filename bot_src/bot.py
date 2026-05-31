@@ -262,7 +262,7 @@ def main() -> None:
             print(f"Warning: Could not register support conversation handler: {e}")
 
         # معالجات الرسائل النصية - المجموعة 2
-        # معالج إدخال المبالغ المتقدم لـ iChancy + معالج إنشاء الحساب من ichancy.py
+        # معالج إدخال المبالغ المتقدم لـ iChancy
         async def handle_text_routing(update, context):
             """توجيه الرسائل النصية حسب الحالة"""
             # التحقق من عمليات الإدمن أولاً
@@ -271,11 +271,9 @@ def main() -> None:
                 await handlers.admin_handler.AdminHandler.handle_admin_input(update, context)
                 return
 
-            # التحقق من حالة إنشاء حساب ichancy
-            ichancy_state = context.user_data.get('ichancy_state')
-            if ichancy_state:
-                await handlers.ichancy.handle_ichancy_text(update, context)
-                return
+            # NOTE: Account creation is handled by createAccount.py ConversationHandler
+            # Do NOT handle ichancy_state here - it conflicts with ConversationHandler
+            # and causes double password prompts and double registration
 
             # التحقق من حالة إيداع/سحب ichancy المتقدم
             if context.user_data.get('ichancy_deposit') or context.user_data.get('ichancy_withdraw'):

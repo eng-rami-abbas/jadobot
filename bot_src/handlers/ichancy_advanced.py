@@ -31,16 +31,12 @@ async def ichancy_account_info(update: Update, context: ContextTypes.DEFAULT_TYP
     
     try:
         # جلب بيانات الحساب من Supabase
-        result = supa.get_client().table("users_ichancy_details") \
-            .select("*") \
-            .eq("telegram_id", user_id) \
-            .execute()
+        account = supa.get_ichancy_details_by_telegram_id(user_id)
         
-        if not result.data or len(result.data) == 0:
+        if not account or not account.get('username'):
             await query.edit_message_text("❌ لم يتم العثور على حساب")
             return
         
-        account = result.data[0]
         username = account.get("username", "N/A")
         password = account.get("password", "N/A")
         email = account.get("email", "N/A")
@@ -95,12 +91,9 @@ async def ichancy_deposit_advanced(update: Update, context: ContextTypes.DEFAULT
     user_id = str(update.effective_user.id)
     
     try:
-        result = supa.get_client().table("users_ichancy_details") \
-            .select("username, player_id") \
-            .eq("telegram_id", user_id) \
-            .execute()
+        account = supa.get_ichancy_details_by_telegram_id(user_id)
         
-        if not result.data:
+        if not account or not account.get('username'):
             await query.edit_message_text("❌ لم يتم العثور على حساب")
             return
         
@@ -148,16 +141,12 @@ async def handle_ichancy_deposit_amount(update: Update, context: ContextTypes.DE
             return
         
         # جلب بيانات الحساب
-        result = supa.get_client().table("users_ichancy_details") \
-            .select("username, player_id") \
-            .eq("telegram_id", user_id) \
-            .execute()
+        account = supa.get_ichancy_details_by_telegram_id(user_id)
         
-        if not result.data:
+        if not account or not account.get('username'):
             await update.message.reply_text("❌ لم يتم العثور على حساب")
             return
         
-        account = result.data[0]
         player_id = account.get("player_id")
         
         # تنفيذ عملية الشحن في الموقع
@@ -219,16 +208,12 @@ async def ichancy_withdraw_advanced(update: Update, context: ContextTypes.DEFAUL
     user_id = str(update.effective_user.id)
     
     try:
-        result = supa.get_client().table("users_ichancy_details") \
-            .select("username, player_id") \
-            .eq("telegram_id", user_id) \
-            .execute()
+        account = supa.get_ichancy_details_by_telegram_id(user_id)
         
-        if not result.data:
+        if not account or not account.get('username'):
             await query.edit_message_text("❌ لم يتم العثور على حساب")
             return
         
-        account = result.data[0]
         username = account.get("username")
         
         # جلب رصيد الموقع الحالي
@@ -268,16 +253,12 @@ async def handle_ichancy_withdraw_amount(update: Update, context: ContextTypes.D
             return
         
         # جلب بيانات الحساب
-        result = supa.get_client().table("users_ichancy_details") \
-            .select("username, player_id") \
-            .eq("telegram_id", user_id) \
-            .execute()
+        account = supa.get_ichancy_details_by_telegram_id(user_id)
         
-        if not result.data:
+        if not account or not account.get('username'):
             await update.message.reply_text("❌ لم يتم العثور على حساب")
             return
         
-        account = result.data[0]
         player_id = account.get("player_id")
         
         # التحقق من رصيد الموقع قبل العملية
@@ -427,16 +408,12 @@ async def ichancy_deposit_all_advanced(update: Update, context: ContextTypes.DEF
     
     try:
         # جلب بيانات الحساب
-        result = supa.get_client().table("users_ichancy_details") \
-            .select("username, player_id") \
-            .eq("telegram_id", user_id) \
-            .execute()
+        account = supa.get_ichancy_details_by_telegram_id(user_id)
         
-        if not result.data:
+        if not account or not account.get('username'):
             await query.edit_message_text("❌ لم يتم العثور على حساب")
             return
         
-        account = result.data[0]
         player_id = account.get("player_id")
         
         # جلب الرصيد الحالي من الموقع

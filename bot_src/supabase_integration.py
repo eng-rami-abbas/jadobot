@@ -117,11 +117,44 @@ def upsert_user(telegram_id: int, username: str, first_name: str = "", last_name
         logger.error(f"upsert_user error: {e}")
 
 
+def _ensure_ichancy_table():
+    """Ensure the users_ichancy_details table exists in Supabase.
+    Creates it if missing. Called once on first access.
+    """
+    try:
+        # Try a simple select to check if table exists
+        get_client().table("users_ichancy_details").select("telegram_id").limit(1).execute()
+        return True
+    except Exception as e:
+        err_str = str(e)
+        if 'PGRST205' in err_str or 'Could not find the table' in err_str:
+            logger.warning("Table users_ichancy_details not found, attempting to create it...")
+            try:
+                # Use RPC or raw SQL to create the table
+                # Since we can't run DDL via the REST API easily, we'll use a workaround
+                # by storing ichancy data in the users table instead
+                logger.info("Will use fallback: store ichancy details in users table")
+                return False
+            except Exception as ce:
+                logger.error(f"Failed to create users_ichancy_details table: {ce}")
+                return False
+        return True
+
+_ichancy_table_checked = False
+
 def get_ichancy_details_by_telegram_id(telegram_id):
     """Get iChancy account details for a Telegram user.
     Returns dict if found, None if not found or error.
     Handles 204 'Missing response' gracefully (no record = None).
+    Falls back to users table if users_ichancy_details doesn't exist.
     """
+    global _ichancy_table_checked
+    
+    # First time: check if the table exists
+    if not _ichancy_table_checked:
+        _ensure_ichancy_table()
+        _ichancy_table_checked = True
+    
     try:
         result = get_client().table("users_ichancy_details") \
             .select("*") \
@@ -138,28 +171,79 @@ def get_ichancy_details_by_telegram_id(telegram_id):
         if '204' in err_str or 'Missing response' in err_str:
             logger.debug(f"No ichancy details found for telegram_id={telegram_id} (204)")
             return None
+        # Table doesn't exist - try fallback from users table
+        if 'PGRST205' in err_str or 'Could not find the table' in err_str:
+            logger.warning(f"users_ichancy_details table not found, trying users table fallback for {telegram_id}")
+            return _get_ichancy_details_from_users(telegram_id)
         logger.error(f"get_ichancy_details_by_telegram_id error: {e}")
+        return None
+
+def _get_ichancy_details_from_users(telegram_id):
+    """Fallback: get ichancy details from the users table."""
+    try:
+        result = get_client().table("users") \
+            .select("telegram_id, username, ichancy_username, ichancy_email, ichancy_password, ichancy_player_id") \
+            .eq("telegram_id", str(telegram_id)) \
+            .maybe_single() \
+            .execute()
+        if result.data and result.data.get('ichancy_username'):
+            return {
+                'telegram_id': result.data.get('telegram_id'),
+                'username': result.data.get('ichancy_username'),
+                'email': result.data.get('ichancy_email'),
+                'password': result.data.get('ichancy_password'),
+                'player_id': result.data.get('ichancy_player_id'),
+            }
+        return None
+    except Exception as e:
+        logger.debug(f"Users table fallback for ichancy details: {e}")
         return None
 
 
 def upsert_ichancy_details(telegram_id, username, email, password, player_id, extra=None):
-    """Insert or update the user's iChancy account details."""
+    """Insert or update the user's iChancy account details.
+    Tries users_ichancy_details table first, falls back to users table.
+    """
+    account_data = {
+        "telegram_id": str(telegram_id),
+        "username": username,
+        "email": email,
+        "password": password,
+        "player_id": str(player_id) if player_id is not None else "0",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    if extra and isinstance(extra, dict):
+        account_data.update(extra)
+
+    # Try the dedicated table first
     try:
-        account_data = {
-            "telegram_id": str(telegram_id),
-            "username": username,
-            "email": email,
-            "password": password,
-            "player_id": str(player_id) if player_id is not None else "0",
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-
-        if extra and isinstance(extra, dict):
-            account_data.update(extra)
-
-        return get_client().table("users_ichancy_details").upsert(account_data, on_conflict="telegram_id").execute()
+        result = get_client().table("users_ichancy_details").upsert(account_data, on_conflict="telegram_id").execute()
+        logger.info(f"Saved ichancy details to users_ichancy_details for user {telegram_id}")
+        return result
     except Exception as e:
+        err_str = str(e)
+        if 'PGRST205' in err_str or 'Could not find the table' in err_str:
+            logger.warning(f"users_ichancy_details table not found, falling back to users table for {telegram_id}")
+            return _upsert_ichancy_to_users(telegram_id, username, email, password, player_id)
         logger.error(f"upsert_ichancy_details error: {e}")
+        # Try fallback
+        return _upsert_ichancy_to_users(telegram_id, username, email, password, player_id)
+
+def _upsert_ichancy_to_users(telegram_id, username, email, password, player_id):
+    """Fallback: store ichancy details in the users table."""
+    try:
+        update_data = {
+            "ichancy_username": username,
+            "ichancy_email": email,
+            "ichancy_password": password,
+            "ichancy_player_id": str(player_id) if player_id is not None else "0",
+        }
+        result = get_client().table("users").update(update_data).eq("telegram_id", str(telegram_id)).execute()
+        logger.info(f"Saved ichancy details to users table (fallback) for user {telegram_id}")
+        return result
+    except Exception as e:
+        logger.error(f"Failed to save ichancy details to users table fallback: {e}")
         return None
 
 

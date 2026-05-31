@@ -240,8 +240,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     elif data == 'ichancy_create_account':
         # لا نعالج هذا هنا - دع ConversationHandler في createAccount.py يلتقطه
-        # ولكن إذا وصلنا هنا فالمحادثة لم تلتقطه، لذلك نعالجه يدوياً
-        await handlers.ichancy.ichancy_create(update, context)
+        # إذا وصلنا هنا فالمحادثة لم تلتقطه - نوجه المستخدم لضغط الزر مرة أخرى
+        await query.answer("يرجى الضغط على زر إنشاء حساب جديد", show_alert=True)
         return
 
     elif data == 'ichancy_account_info':

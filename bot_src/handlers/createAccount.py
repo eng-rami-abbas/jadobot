@@ -9,7 +9,7 @@ import Logger
 
 logger = Logger.getLogger()
 
-NAME, PASSWORD, EMAIL, AMOUNT = range(4)
+NAME, PASSWORD = range(2)
 
 
 def generateRandomString(length=5):
@@ -56,9 +56,11 @@ async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     full_username = base_name_clean + USERNAME_SUFFIX
     context.user_data['name'] = full_username
     context.user_data['display_name'] = name  # الاسم الأصلي للعرض
+
+    # رسالة واحدة فقط تطلب كلمة المرور
     await update.message.reply_text(
         f"✅ اسم المستخدم الخاص بك سيكون: <code>{full_username}</code>\n\n"
-        f"ادخل كلمة سر للحساب الجديد (8 أحرف على الأقل)",
+        f"🔑 أدخل كلمة مرور (8 أحرف على الأقل):",
         parse_mode='HTML'
     )
     return PASSWORD
@@ -81,11 +83,9 @@ async def get_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data['email'] = email
 
-    await update.message.reply_text(f"تم توليد بريد إلكتروني: {email}")
     await update.message.reply_text("جاري إنشاء الحساب... ⏳")
 
-    # Call the handler directly instead of fire-and-forget task
-    # This ensures errors are properly handled and Supabase save is verified
+    # Call the handler directly - ensures errors are properly handled and Supabase save is verified
     await handle_create_account(update, context)
 
     return ConversationHandler.END
@@ -110,7 +110,7 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
-    # REGISTER ACCOUNT (async)
+    # REGISTER ACCOUNT (async) - ONLY ONCE
     try:
         result = await api.register_player(
             username=name,
@@ -173,7 +173,7 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
             )
             # Verify the save worked
             if save_result:
-                logger.info(f"Supabase upsert_ichancy_details response: {save_result}")
+                logger.info(f"Supabase upsert_ichancy_details saved successfully for user {telegram_user_id}")
                 save_success = True
             else:
                 logger.error(f"upsert_ichancy_details returned None for user {telegram_user_id}")
@@ -195,17 +195,17 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
         # MESSAGE SUCCESS
         success_message = (
             f"✅ تم إنشاء الحساب بنجاح!\n\n"
-            f"👤 الحساب: {name}\n"
-            f"🔒 كلمة السر: {password}\n"
-            f"📧 الإيميل: {email}\n"
+            f"👤 الحساب: <code>{name}</code>\n"
+            f"🔒 كلمة السر: <code>{password}</code>\n"
+            f"📧 الإيميل: <code>{email}</code>\n"
             f"🆔 رقم اللاعب: {player_id if player_id else 'قيد المعالجة'}\n\n"
             f"🔗 رابط الدخول: https://www.ichancy.com/ar\n\n"
             f"⚠️ احفظ بيانات حسابك في مكان آمن!"
         )
 
-        await update.message.reply_text(success_message, parse_mode=None)
+        await update.message.reply_text(success_message, parse_mode='HTML')
 
-        # Show iChancy keyboard with account
+        # Show iChancy keyboard with account buttons (charge, withdraw, etc.)
         from handlers.ichancy import get_ichancy_keyboard
         await update.message.reply_text(
             "🎮 القائمة:",
@@ -229,7 +229,7 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
         elif 'email' in error_msg.lower() or 'بريد' in error_msg:
             user_error = f"❌ خطأ في البريد الإلكتروني: {error_msg}\n\nحاول مرة أخرى."
         elif 'password' in error_msg.lower() or 'كلمة' in error_msg:
-            user_error = f"❌ خطأ في كلمة السر: {error_msg}\n\nيجب أن تكون على الأقل 3 أحرف."
+            user_error = f"❌ خطأ في كلمة السر: {error_msg}\n\nيجب أن تكون على الأقل 8 أحرف."
         elif 'parent' in error_msg.lower():
             user_error = "❌ خطأ في نظام الإحالة. تواصل مع الدعم."
         else:

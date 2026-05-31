@@ -115,20 +115,14 @@ def get_ichancy_keyboard(user_id):
     account = get_ichancy_account(user_id)
     has_account = bool(account and account.get("username"))
 
-    # Ensure user_id is integer for callback data consistency
-    user_id_str = str(user_id)
-
     if has_account:
         keyboard = [
-            [InlineKeyboardButton("👤 معلومات الحساب", callback_data="ichancy_account_info")],
             [
+                InlineKeyboardButton("💸 سحب رصيد", callback_data="ichancy_withdraw_adv"),
                 InlineKeyboardButton("💰 شحن رصيد", callback_data="ichancy_deposit_adv"),
-                InlineKeyboardButton("💸 سحب رصيد", callback_data="ichancy_withdraw_adv")
             ],
             [InlineKeyboardButton("⚡ شحن كامل الرصيد", callback_data="ichancy_deposit_all_adv")],
-            [InlineKeyboardButton("📊 رصيدي", callback_data="ichancy_balance")],
-            [InlineKeyboardButton("📈 عملياتي", callback_data="ichancy_transactions")],
-            [InlineKeyboardButton("❌ حذف الحساب", callback_data="ichancy_delete_account")],
+            [InlineKeyboardButton("👤 معلومات الحساب", callback_data="ichancy_account_info")],
             [InlineKeyboardButton("🔙 رجوع", callback_data="back_to_menu")],
         ]
     else:
@@ -139,143 +133,6 @@ def get_ichancy_keyboard(user_id):
 
     return InlineKeyboardMarkup(keyboard)
 
-async def ichancy_create(update, context):
-    query = update.callback_query
-    await query.answer()
-
-    context.user_data['ichancy_state'] = 'ichancy_wait_username'
-    context.user_data.pop('temp_username', None)
-
-    try:
-        await query.edit_message_text("🆕 أدخل اسم المستخدم للحساب:")
-    except Exception:
-        await query.message.reply_text("🆕 أدخل اسم المستخدم للحساب:")
-
-async def ichancy_deposit(update, context):
-    query = update.callback_query
-    await query.answer()
-
-    user_id = str(update.effective_user.id)
-    account = get_ichancy_account(user_id)
-
-    if not account or not account.get("username"):
-        await query.edit_message_text("❌ يجب أن تنشئ حساب أولا")
-        return
-
-    context.user_data['ichancy_state'] = 'ichancy_deposit'
-
-    await query.edit_message_text(
-        "💰 **إيداع iChancy**\n\nأرسل المبلغ:",
-        parse_mode="Markdown"
-    )
-
-async def handle_deposit_amount(update, context):
-    user_id = str(update.effective_user.id)
-    try:
-        amount = float(update.message.text)
-    except ValueError:
-        await update.message.reply_text("❌ يرجى إدخال رقم صحيح")
-        return
-
-    account = get_ichancy_account(user_id)
-
-    if amount <= 0:
-        await update.message.reply_text("❌ المبلغ يجب أن يكون أكبر من 0")
-        return
-
-    if not account or not account.get("username"):
-        await update.message.reply_text("❌ يجب أن تنشئ حساب أولا")
-        return
-
-    api = get_api()
-    if not api:
-        await update.message.reply_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
-        return
-    result = await api.deposit_to_player_by_username(
-        username=account["username"],
-        amount=amount
-    )
-
-    if result['success']:
-        await update.message.reply_text("✅ تم الشحن بنجاح")
-    else:
-        await update.message.reply_text(f"❌ فشل الشحن: {result.get('error', 'Unknown error')}")
-
-async def ichancy_withdraw(update, context):
-    query = update.callback_query
-    await query.answer()
-
-    user_id = str(update.effective_user.id)
-    account = get_ichancy_account(user_id)
-
-    if not account or not account.get("username"):
-        await query.edit_message_text("❌ يجب أن تنشئ حساب أولا")
-        return
-
-    await query.edit_message_text("💸 أرسل المبلغ الذي تريد سحبه:")
-    context.user_data['ichancy_state'] = 'ichancy_withdraw'
-
-async def handle_withdraw_amount(update, context):
-    user_id = str(update.effective_user.id)
-    try:
-        amount = float(update.message.text)
-    except ValueError:
-        await update.message.reply_text("❌ يرجى إدخال رقم صحيح")
-        return
-
-    account = get_ichancy_account(user_id)
-
-    api = get_api()
-    if not api:
-        await update.message.reply_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
-        return
-    result = await api.withdraw_from_player_by_username(
-        username=account["username"] if account else None,
-        amount=amount
-    )
-
-    if result['success']:
-        await update.message.reply_text("✅ تم السحب")
-    else:
-        await update.message.reply_text(f"❌ فشل السحب: {result.get('error', 'Unknown error')}")
-
-async def ichancy_deposit_all(update, context):
-    query = update.callback_query
-    await query.answer()
-
-    user_id = str(update.effective_user.id)
-    account = get_ichancy_account(user_id)
-
-    if not account or not account.get("username"):
-        await query.edit_message_text("❌ يجب أن تنشئ حساب أولا")
-        return
-
-    api = get_api()
-    if not api:
-        await query.edit_message_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
-        return
-
-    balance_result = await api.get_player_balance_by_username(account["username"])
-
-    if not balance_result['success']:
-        await query.edit_message_text("❌ لا يمكن جلب الرصيد")
-        return
-
-    balance = balance_result.get('balance', 0)
-
-    if balance <= 0:
-        await query.edit_message_text("❌ لا يوجد رصيد")
-        return
-
-    result = await api.withdraw_from_player_by_username(
-        username=account["username"],
-        amount=balance
-    )
-
-    if result['success']:
-        await query.edit_message_text("✅ تم شحن كامل الرصيد")
-    else:
-        await query.edit_message_text(f"❌ فشل العملية: {result.get('error', 'Unknown error')}")
 
 async def ichancy_balance(update, context):
     query = update.callback_query
@@ -313,79 +170,6 @@ async def ichancy_balance(update, context):
             parse_mode="Markdown",
             reply_markup=get_ichancy_keyboard(user_id)
         )
-
-async def handle_ichancy_text(update, context):
-    user_id = update.effective_user.id
-    text = update.message.text
-    state = context.user_data.get('ichancy_state')
-
-    if state == "ichancy_wait_username":
-        # تنظيف الاسم وإضافة اللاحقة _jado2026
-        base_name_clean = ''.join(c if c.isalnum() else '' for c in text.strip().lower())
-        if not base_name_clean or len(base_name_clean) < 3:
-            await update.message.reply_text("❌ الاسم يجب أن يحتوي على 3 أحرف على الأقل")
-            return
-        full_username = base_name_clean + USERNAME_SUFFIX
-        context.user_data['temp_username'] = full_username
-        context.user_data['ichancy_state'] = "ichancy_wait_password"
-        await update.message.reply_text(
-            f"✅ اسم المستخدم الخاص بك سيكون: <code>{full_username}</code>\n\n"
-            f"🔑 الآن أدخل كلمة مرور (8 أحرف على الأقل):",
-            parse_mode='HTML'
-        )
-        return
-
-    if state == "ichancy_wait_password":
-        if len(text) < 8:
-            await update.message.reply_text("❌ كلمة المرور قصيرة، يجب أن تكون 8 أحرف على الأقل")
-            return
-
-        username = context.user_data.get("temp_username")
-        password = text
-        email = f"{user_id}@bot.com"
-
-        api = get_api()
-        if not api:
-            await update.message.reply_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
-            return
-        res = await api.register_player(
-            username=username,
-            password=password,
-            email=email
-        )
-
-        if res and res.get("success"):
-            player_id = res.get('player_id')
-            if not player_id:
-                player_id = await api.get_player_id_by_username(username)
-
-            context.user_data['ichancy_account'] = username
-            context.user_data['ichancy_password'] = password
-            context.user_data['ichancy_player_id'] = player_id
-
-            try:
-                supa.upsert_ichancy_details(
-                    telegram_id=str(user_id),
-                    username=username,
-                    email=email,
-                    password=password,
-                    player_id=player_id or "0"
-                )
-            except Exception as e:
-                logger.warning(f"Could not persist ichancy details to Supabase: {e}")
-
-            context.user_data['ichancy_state'] = None
-            context.user_data.pop('temp_username', None)
-
-            await update.message.reply_text("✅ تم إنشاء الحساب بنجاح")
-            # Use integer user_id for consistency with get_ichancy_keyboard
-            await update.message.reply_text(
-                "🎮 القائمة:",
-                reply_markup=get_ichancy_keyboard(int(user_id))
-            )
-        else:
-            error_msg = res.get('error', 'Unknown error') if res else 'Registration failed'
-            await update.message.reply_text(f"❌ فشل: {error_msg}")
 
 async def delete_account_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
