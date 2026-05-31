@@ -40,7 +40,7 @@ async def button_deposit_account_handler(update: Update, context: ContextTypes.D
     account_balance = 0
     if api and player_id:
         try:
-            balance_result = api.get_player_balance_by_id(player_id)
+            balance_result = await api.get_player_balance_by_id(player_id)
             if balance_result.get('success'):
                 account_balance = balance_result.get('balance', 0)
         except Exception as e:
@@ -90,7 +90,7 @@ async def get_ammount_for_deposit(update: Update, context: ContextTypes.DEFAULT_
     if not api:
         await update.message.reply_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
         return ConversationHandler.END
-    deposit_result = api.deposit_to_player(player_id, ammountForDeposit, "Telegram Bot Deposit")
+    deposit_result = await api.deposit_to_player(player_id, ammountForDeposit, "Telegram Bot Deposit")
 
     if deposit_result.get('success'):
         # خصم الرصيد من حساب المستخدم في البوت

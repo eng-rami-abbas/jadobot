@@ -30,7 +30,7 @@ async def button_withdrawal_from_account_handler(update: Update, context: Contex
     account_balance = 0
     if api and player_id:
         try:
-            balance_result = api.get_player_balance_by_id(player_id)
+            balance_result = await api.get_player_balance_by_id(player_id)
             if balance_result.get('success'):
                 account_balance = balance_result.get('balance', 0)
         except Exception as e:
@@ -86,7 +86,7 @@ async def get_withdraw_ammount(update: Update, context: ContextTypes.DEFAULT_TYP
     if not api:
         await update.message.reply_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
         return ConversationHandler.END
-    withdraw_result = api.withdraw_from_player(player_id, ammount, "Telegram Bot Withdrawal")
+    withdraw_result = await api.withdraw_from_player(player_id, ammount, "Telegram Bot Withdrawal")
 
     if withdraw_result.get('success'):
         # إضافة الرصيد إلى حساب المستخدم في البوت

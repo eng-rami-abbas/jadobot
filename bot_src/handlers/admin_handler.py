@@ -927,13 +927,26 @@ class AdminHandler:
                 try:
                     telegram_id = user.get('telegram_id')
                     if telegram_id:
+                        sent = False
+                        # Try Markdown first, then HTML, then plain text
                         try:
                             await context.bot.send_message(chat_id=int(telegram_id), text=message, parse_mode='Markdown')
-                        except Exception as md_err:
-                            # Markdown parse failed - retry without parse_mode
-                            logger.debug(f"Markdown failed for {telegram_id}, retrying without parse_mode: {md_err}")
+                            sent = True
+                        except Exception:
+                            pass
+                        if not sent:
                             try:
-                                await context.bot.send_message(chat_id=int(telegram_id), text=message)
+                                await context.bot.send_message(chat_id=int(telegram_id), text=message, parse_mode='HTML')
+                                sent = True
+                            except Exception:
+                                pass
+                        if not sent:
+                            try:
+                                # Strip markdown characters and send as plain text
+                                import re
+                                plain_text = re.sub(r'[\*_\[\]\(\)`~>#]', '', message)
+                                await context.bot.send_message(chat_id=int(telegram_id), text=plain_text)
+                                sent = True
                             except Exception:
                                 pass
                         successful_sends += 1
@@ -1044,12 +1057,25 @@ class AdminHandler:
                 try:
                     telegram_id = user.get('telegram_id')
                     if telegram_id:
+                        sent = False
+                        # Try Markdown first, then HTML, then plain text
                         try:
                             await context.bot.send_message(chat_id=int(telegram_id), text=broadcast_text, parse_mode='Markdown')
+                            sent = True
                         except Exception:
-                            # Markdown parse failed - retry without parse_mode
+                            pass
+                        if not sent:
                             try:
-                                await context.bot.send_message(chat_id=int(telegram_id), text=broadcast_text)
+                                await context.bot.send_message(chat_id=int(telegram_id), text=broadcast_text, parse_mode='HTML')
+                                sent = True
+                            except Exception:
+                                pass
+                        if not sent:
+                            try:
+                                import re
+                                plain_text = re.sub(r'[\*_\[\]\(\)`~>#]', '', broadcast_text)
+                                await context.bot.send_message(chat_id=int(telegram_id), text=plain_text)
+                                sent = True
                             except Exception:
                                 pass
                         successful_sends += 1
@@ -1158,6 +1184,14 @@ class AdminHandler:
         elif data == 'admin_approve':
             await AdminHandler._handle_approve_transaction(update, context)
         elif data == 'admin_reject':
+            await AdminHandler._handle_reject_transaction(update, context)
+        elif data == 'admin_user_stats':
+            await AdminHandler.analytics_dashboard(update, context)
+        elif data == 'admin_ban_user':
+            await query.answer("⚠️ ميزة حظر المستخدمين قيد التطوير", show_alert=True)
+        elif data == 'admin_approve_transaction':
+            await AdminHandler._handle_approve_transaction(update, context)
+        elif data == 'admin_reject_transaction':
             await AdminHandler._handle_reject_transaction(update, context)
         elif data == 'admin_balance':
             await AdminHandler.user_management(update, context)

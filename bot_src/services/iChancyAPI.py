@@ -1,34 +1,51 @@
 """
 iChancy Agent API Client
 ========================
-Connects to agents.ichancy.com API with Cloudflare bypass.
-Uses multiple strategies with session recycling:
-  0. FlareSolverr proxy (real browser, best Cloudflare bypass)
-  1. curl_cffi (best TLS fingerprint impersonation)
-  2. cloudscraper (Cloudflare challenge solver)
-  3. requests with browser headers
-  4. raw requests with minimal headers (last resort)
-  5. Manual token injection (ICHANCY_ACCESS_TOKEN env var)
+Connects to agents.ichancy.com API using Playwright browser automation
+with stealth mode to bypass Cloudflare protection.
 
-On 403: destroys the entire session, rebuilds with the next
-available strategy, and retries.
+Strategy:
+  1. Launch headless Chromium with playwright-stealth
+  2. Navigate to login page, fill credentials, submit
+  3. Extract access token from localStorage
+  4. Extract cookies from browser context
+  5. Use token + cookies for subsequent API calls via httpx
+
+Fallback:
+  - Manual token via ICHANCY_ACCESS_TOKEN env var
+  - Direct API calls with token (no browser) if Cloudflare
+    doesn't block API endpoints after authentication
 """
 
 import os
 import json
-import time
+import asyncio
 import logging
-import random
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
-# Try cloudscraper first, fall back to requests
+# Try importing Playwright
 try:
-    import cloudscraper
-    HAS_CLOUDSCRAPER = True
+    from playwright.async_api import async_playwright
+    HAS_PLAYWRIGHT = True
 except ImportError:
-    HAS_CLOUDSCRAPER = False
+    HAS_PLAYWRIGHT = False
+    logger.warning("playwright not installed - browser-based auth unavailable")
+
+try:
+    from playwright_stealth import stealth_async
+    HAS_STEALTH = True
+except ImportError:
+    HAS_STEALTH = False
+    logger.warning("playwright-stealth not installed - stealth mode unavailable")
+
+# HTTP client for API calls
+try:
+    import httpx
+    HAS_HTTPX = True
+except ImportError:
+    HAS_HTTPX = False
 
 try:
     import requests as raw_requests
@@ -36,268 +53,33 @@ try:
 except ImportError:
     HAS_REQUESTS = False
 
-try:
-    from curl_cffi import requests as curl_requests
-    HAS_CURL_CFFI = True
-except ImportError:
-    HAS_CURL_CFFI = False
-
-# FlareSolverr support
-try:
-    import httpx
-    HAS_HTTPX = True
-except ImportError:
-    HAS_HTTPX = False
-
-# ---------------------------------------------------------------------------
-# Browser-impersonation profiles we cycle through when a 403 forces a rebuild.
-# Newer Chrome versions first, then Firefox as a fallback.
-# ---------------------------------------------------------------------------
-_CURL_IMPERSONATE_PROFILES = [
-    "chrome124",
-    "chrome120",
-    "chrome119",
-    "chrome116",
-    "chrome110",
-    "chrome107",
-    "chrome104",
-    "chrome101",
-    "chrome100",
-    "edge101",
-    "safari17_0",
-    "safari15_5",
-    "safari15_3",
-]
-
-_CLOUDSCRAPER_BROWSERS = [
-    {"browser": "chrome", "platform": "windows", "mobile": False},
-    {"browser": "chrome", "platform": "darwin", "mobile": False},
-    {"browser": "firefox", "platform": "windows", "mobile": False},
-]
-
-# FlareSolverr URL (can be set via FLARESOLVERR_URL env var)
-FLARESOLVERR_URL = os.getenv('FLARESOLVERR_URL', 'http://localhost:8191/v1')
-
-
-def _is_cloudflare_block(response):
-    """Return True if the response looks like a Cloudflare block page.
-
-    Cloudflare can respond with:
-      - An HTML challenge page (status 403 or 503)
-      - A JSON body containing ``cf-mitigated`` or ``cf_chl_rc``
-      - Response headers like ``cf-mitigated: challenge``
-    """
-    status = getattr(response, 'status_code', 0)
-    if status not in (403, 503):
-        return False
-
-    # Check response headers
-    resp_headers = getattr(response, 'headers', {})
-    if resp_headers.get('cf-mitigated'):
-        return True
-    if resp_headers.get('server', '').lower().startswith('cloudflare'):
-        # Cloudflare server header + 403/503 is very likely a block
-        pass  # still check body below
-
-    # Check body
-    text = ''
-    try:
-        text = getattr(response, 'text', '') or ''
-    except Exception:
-        pass
-
-    text_lower = text.lower()
-
-    # Classic HTML challenge page
-    if '<!doctype' in text_lower or '<html' in text_lower:
-        if 'cloudflare' in text_lower or 'cf-' in text_lower or 'challenge' in text_lower:
-            return True
-        # Any HTML on a 403 from an API endpoint is suspicious
-        if len(text) > 200:
-            return True
-
-    # JSON Cloudflare responses
-    try:
-        data = json.loads(text)
-        if isinstance(data, dict):
-            # Cloudflare mitigation markers in JSON
-            if data.get('cf-mitigated') or data.get('cf_chl_rc'):
-                return True
-            if 'cloudflare' in str(data.get('message', '')).lower():
-                return True
-    except (json.JSONDecodeError, ValueError):
-        pass
-
-    # Short HTML fragments like "<html><body>403</body></html>"
-    if text_lower.strip().startswith('<') and status == 403:
-        return True
-
-    return False
-
-
-class FlareSolverrClient:
-    """Client for FlareSolverr proxy to bypass Cloudflare challenges."""
-
-    def __init__(self, url=None):
-        self.url = url or FLARESOLVERR_URL
-        self.session = None
-        try:
-            if HAS_HTTPX:
-                self.session = httpx.Client(timeout=120)
-            else:
-                self.session = raw_requests.Session()
-        except Exception:
-            self.session = raw_requests.Session()
-
-    def _request(self, method, endpoint, payload):
-        """Make a request to FlareSolverr."""
-        url = f"{self.url}/{endpoint}"
-        try:
-            if HAS_HTTPX and isinstance(self.session, httpx.Client):
-                resp = self.session.request(method, url, json=payload)
-                return resp.json()
-            else:
-                resp = self.session.request(method, url, json=payload, timeout=120)
-                return resp.json()
-        except Exception as e:
-            logger.error(f"FlareSolverr request failed: {e}")
-            return None
-
-    def create_session(self):
-        """Create a new browser session in FlareSolverr."""
-        payload = {
-            "cmd": "sessions.create",
-        }
-        result = self._request("POST", "", payload)
-        if result and result.get('status') == 'ok':
-            session_id = result.get('session')
-            logger.info(f"FlareSolverr session created: {session_id}")
-            return session_id
-        return None
-
-    def destroy_session(self, session_id):
-        """Destroy a browser session in FlareSolverr."""
-        payload = {
-            "cmd": "sessions.destroy",
-            "session": session_id,
-        }
-        self._request("POST", "", payload)
-
-    def post_request(self, url, payload, session_id=None):
-        """Send a POST request through FlareSolverr."""
-        fs_payload = {
-            "cmd": "request.post",
-            "url": url,
-            "postData": json.dumps(payload),
-            "headers": {"Content-Type": "application/json"},
-            "maxTimeout": 60000,
-        }
-        if session_id:
-            fs_payload["session"] = session_id
-
-        result = self._request("POST", "", fs_payload)
-        if result and result.get('status') == 'ok':
-            solution = result.get('solution', {})
-            response_data = {
-                'status_code': solution.get('status', 0),
-                'text': solution.get('response', ''),
-                'headers': solution.get('headers', {}),
-                'cookies': solution.get('cookies', []),
-            }
-            return response_data
-        return None
-
-    def get_request(self, url, session_id=None):
-        """Send a GET request through FlareSolverr."""
-        fs_payload = {
-            "cmd": "request.get",
-            "url": url,
-            "maxTimeout": 60000,
-        }
-        if session_id:
-            fs_payload["session"] = session_id
-
-        result = self._request("POST", "", fs_payload)
-        if result and result.get('status') == 'ok':
-            solution = result.get('solution', {})
-            response_data = {
-                'status_code': solution.get('status', 0),
-                'text': solution.get('response', ''),
-                'headers': solution.get('headers', {}),
-                'cookies': solution.get('cookies', []),
-            }
-            return response_data
-        return None
-
-    def is_available(self):
-        """Check if FlareSolverr is running and accessible."""
-        try:
-            if HAS_HTTPX and isinstance(self.session, httpx.Client):
-                resp = self.session.get(f"{self.url}/health", timeout=5)
-            else:
-                resp = self.session.get(f"{self.url}/health", timeout=5)
-            return resp.status_code == 200
-        except Exception:
-            return False
-
-
-class FlareSolverrResponse:
-    """Wrapper to make FlareSolverr responses compatible with the existing code."""
-
-    def __init__(self, data):
-        self._data = data or {}
-        self.status_code = self._data.get('status_code', 0)
-        self.text = self._data.get('text', '')
-        self.headers = self._data.get('headers', {})
-
-    def json(self):
-        return json.loads(self.text)
-
 
 class iChancyAPI:
     """
-    iChancy Agent API client with robust Cloudflare bypass.
+    iChancy Agent API client using Playwright browser automation.
 
-    Strategy priority:
-      0. FlareSolverr proxy – real browser (best Cloudflare bypass)
-      1. curl_cffi  – full TLS fingerprint impersonation
-      2. cloudscraper – JS challenge solver
-      3. requests + browser headers
-      4. raw requests + minimal headers
-      5. Manual token (ICHANCY_ACCESS_TOKEN env var)
-
-    On every 403 the session is completely torn down and rebuilt
-    with the next available strategy.  Cookies from a successful
-    sign-in are persisted and injected into new sessions so we
-    survive longer without re-authenticating.
+    Uses a real Chromium browser with stealth mode to bypass Cloudflare,
+    then extracts the access token and cookies for subsequent API calls.
     """
 
     BASE_URL = 'https://agents.ichancy.com'
     API_BASE = f'{BASE_URL}/global/api'
 
-    # Singleton-like shared session to avoid re-authenticating on every call
+    # Singleton-like shared session
     _shared_instance = None
     _last_auth_time = None
     _auth_ttl = timedelta(minutes=30)
 
-    # Persisted cookies from a successful sign-in (class-level so they
-    # survive session rebuilds)
-    _persisted_cookies = None
-
-    # Persisted FlareSolverr session ID
-    _fs_session_id = None
+    # Cached browser cookies (class-level for reuse)
+    _browser_cookies = None
 
     @classmethod
     def get_shared(cls):
-        """Get or create a shared API instance to avoid re-authentication overhead."""
+        """Get or create a shared API instance."""
         now = datetime.now()
         if cls._shared_instance is None or (cls._last_auth_time and now - cls._last_auth_time > cls._auth_ttl):
-            try:
-                cls._shared_instance = cls()
-                cls._last_auth_time = now
-            except Exception as e:
-                logger.warning(f"Failed to create shared API instance: {e}")
-                cls._shared_instance = None
+            cls._shared_instance = cls()
+            cls._last_auth_time = now
         return cls._shared_instance
 
     @classmethod
@@ -305,209 +87,49 @@ class iChancyAPI:
         """Reset the shared instance to force re-authentication."""
         cls._shared_instance = None
         cls._last_auth_time = None
+        cls._browser_cookies = None
 
     def __init__(self):
-        self.session = None
         self.access_token = None
         self.refresh_token = None
         self.token_expires_at = None
         self.agent_id = None
-        self._session_type = None
-        self._strategy_index = -1       # which strategy we're on (-1 = not set)
-        self._curl_profile_index = 0    # which curl_cffi profile
-        self._cs_browser_index = 0      # which cloudscraper browser config
-        self._fs_client = None          # FlareSolverr client
+        self._http_client = None
+        self._authenticated = False
 
         # Check for manual token first
         manual_token = os.getenv('ICHANCY_ACCESS_TOKEN', '').strip()
         if manual_token:
             self.access_token = manual_token
             self.token_expires_at = datetime.now() + timedelta(hours=1)
+            self._authenticated = True
             logger.info("Using manually provided ICHANCY_ACCESS_TOKEN")
 
-        # Setup session with best available strategy
-        self._init_session()
+        # Initialize HTTP client
+        self._init_http_client()
 
-        # Auto login (only if no manual token)
-        if not self.access_token:
-            self._ensure_authenticated()
-
-    # ------------------------------------------------------------------
-    # SESSION MANAGEMENT
-    # ------------------------------------------------------------------
-    def _init_session(self):
-        """Initialize HTTP session with best available strategy.
-
-        Strategies (in order):
-          -1 – FlareSolverr (real browser proxy)
-          0 – curl_cffi
-          1 – cloudscraper
-          2 – requests + browser headers
-          3 – raw requests + minimal headers
-        """
-        self._destroy_session()
-
-        # Strategy -1: FlareSolverr (best Cloudflare bypass - uses real browser)
-        if self._strategy_index <= -1:
-            try:
-                fs_client = FlareSolverrClient()
-                if fs_client.is_available():
-                    self._fs_client = fs_client
-                    self._session_type = "flaresolverr"
-                    logger.info("Using FlareSolverr session (real browser proxy)")
-                    return
-                else:
-                    logger.info("FlareSolverr not available, trying next strategy")
-            except Exception as e:
-                logger.warning(f"FlareSolverr init failed: {e}")
-
-        # Strategy 0: curl_cffi (best Cloudflare bypass via TLS fingerprint)
-        if self._strategy_index <= 0 and HAS_CURL_CFFI:
-            try:
-                profile = _CURL_IMPERSONATE_PROFILES[
-                    self._curl_profile_index % len(_CURL_IMPERSONATE_PROFILES)
-                ]
-                self.session = curl_requests.Session(impersonate=profile)
-                self._session_type = "curl_cffi"
-                logger.info(f"Using curl_cffi session (impersonate={profile})")
-                self._inject_persisted_cookies()
-                return
-            except Exception as e:
-                logger.warning(f"curl_cffi init failed: {e}")
-
-        # Strategy 1: cloudscraper
-        if self._strategy_index <= 1 and HAS_CLOUDSCRAPER:
-            try:
-                browser_cfg = _CLOUDSCRAPER_BROWSERS[
-                    self._cs_browser_index % len(_CLOUDSCRAPER_BROWSERS)
-                ]
-                self.session = cloudscraper.create_scraper(browser=browser_cfg)
-                self._session_type = "cloudscraper"
-                logger.info(f"Using cloudscraper session (browser={browser_cfg})")
-                self._inject_persisted_cookies()
-                return
-            except Exception as e:
-                logger.warning(f"cloudscraper init failed: {e}")
-
-        # Strategy 2: plain requests with browser headers
-        if self._strategy_index <= 2 and HAS_REQUESTS:
-            self.session = raw_requests.Session()
-            self._session_type = "requests"
-            logger.info("Using plain requests session with browser headers")
-            self._inject_persisted_cookies()
-            return
-
-        # Strategy 3: raw requests with minimal headers
-        if self._strategy_index <= 3 and HAS_REQUESTS:
-            self.session = raw_requests.Session()
-            self._session_type = "raw_requests"
-            logger.info("Using raw requests session with minimal headers")
-            self._inject_persisted_cookies()
-            return
-
-        raise RuntimeError("No HTTP library available (need requests, cloudscraper, or curl_cffi)")
-
-    def _destroy_session(self):
-        """Completely tear down the current session."""
-        if self.session is not None:
-            try:
-                self.session.close()
-            except Exception:
-                pass
-            self.session = None
-        # Don't destroy FlareSolverr session here - it's managed separately
-        self._session_type = None
-
-    def _rebuild_session(self):
-        """Destroy session, advance to next strategy/profile, and rebuild."""
-        self._destroy_session()
-
-        if self._session_type == "flaresolverr" or self._strategy_index <= -1:
-            # FlareSolverr failed, try curl_cffi
-            self._strategy_index = 0
-            logger.info("FlareSolverr failed, trying curl_cffi")
-        elif self._session_type == "curl_cffi" or self._strategy_index == 0:
-            # Try next curl profile first
-            self._curl_profile_index += 1
-            if self._curl_profile_index < len(_CURL_IMPERSONATE_PROFILES):
-                self._strategy_index = 0  # stay on curl_cffi
-                logger.info(f"Retrying with next curl_cffi profile (index {self._curl_profile_index})")
-            else:
-                # Exhausted curl profiles, move to cloudscraper
-                self._strategy_index = 1
-                logger.info("Exhausted curl_cffi profiles, trying cloudscraper")
-        elif self._session_type == "cloudscraper" or self._strategy_index == 1:
-            # Try next cloudscraper browser config
-            self._cs_browser_index += 1
-            if self._cs_browser_index < len(_CLOUDSCRAPER_BROWSERS):
-                self._strategy_index = 1  # stay on cloudscraper
-                logger.info(f"Retrying with next cloudscraper config (index {self._cs_browser_index})")
-            else:
-                self._strategy_index = 2
-                logger.info("Exhausted cloudscraper configs, trying plain requests")
+    def _init_http_client(self):
+        """Initialize the HTTP client for API calls."""
+        if HAS_HTTPX:
+            self._http_client = httpx.AsyncClient(
+                timeout=60.0,
+                follow_redirects=True,
+            )
+        elif HAS_REQUESTS:
+            self._http_client = None  # Will use sync requests as fallback
         else:
-            # Advance to the next strategy
-            self._strategy_index = min(self._strategy_index + 1, 3)
+            raise RuntimeError("No HTTP library available (need httpx or requests)")
 
-        self._init_session()
+    async def _get_cookies_dict(self):
+        """Get cookies as a dict for HTTP requests."""
+        cookies = {}
+        if iChancyAPI._browser_cookies:
+            for cookie in iChancyAPI._browser_cookies:
+                cookies[cookie.get('name', '')] = cookie.get('value', '')
+        return cookies
 
-    def _inject_persisted_cookies(self):
-        """Inject any previously saved cookies into the current session."""
-        if not iChancyAPI._persisted_cookies or not self.session:
-            return
-        try:
-            if hasattr(self.session, 'cookies'):
-                for name, value in iChancyAPI._persisted_cookies.items():
-                    self.session.cookies.set(name, value, domain='agents.ichancy.com')
-                logger.debug(f"Injected {len(iChancyAPI._persisted_cookies)} persisted cookies")
-        except Exception as e:
-            logger.warning(f"Failed to inject persisted cookies: {e}")
-
-    def _persist_cookies(self):
-        """Save current session cookies for future session rebuilds."""
-        if not self.session:
-            return
-        try:
-            cookies = {}
-            if hasattr(self.session, 'cookies'):
-                for cookie in self.session.cookies:
-                    cookies[cookie.name] = cookie.value
-            if cookies:
-                iChancyAPI._persisted_cookies = cookies
-                logger.debug(f"Persisted {len(cookies)} cookies for session reuse")
-        except Exception as e:
-            logger.warning(f"Failed to persist cookies: {e}")
-
-    # ------------------------------------------------------------------
-    # HEADERS
-    # ------------------------------------------------------------------
-    def _get_headers(self, with_auth=False):
-        """Return a headers dict appropriate for the current session type."""
-        if self._session_type == "raw_requests":
-            h = {
-                'Content-Type': 'application/json',
-                'Origin': self.BASE_URL,
-                'Referer': self.BASE_URL + '/',
-            }
-            if with_auth and self.access_token:
-                h['Authorization'] = f'Bearer {self.access_token}'
-            return h
-
-        if self._session_type == "curl_cffi":
-            h = {
-                'Accept': 'application/json, text/plain, */*',
-                'Content-Type': 'application/json',
-                'Origin': self.BASE_URL,
-                'Referer': self.BASE_URL + '/',
-                'Sec-Fetch-Dest': 'empty',
-                'Sec-Fetch-Mode': 'cors',
-                'Sec-Fetch-Site': 'same-origin',
-            }
-            if with_auth and self.access_token:
-                h['Authorization'] = f'Bearer {self.access_token}'
-            return h
-
-        # cloudscraper / plain requests – full browser headers
+    async def _get_headers(self, with_auth=True):
+        """Return headers dict with auth token and browser-like headers."""
         h = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
             'Accept': 'application/json, text/plain, */*',
@@ -528,124 +150,287 @@ class iChancyAPI:
             h['Authorization'] = f'Bearer {self.access_token}'
         return h
 
-    # ------------------------------------------------------------------
-    # HTTP VERBS
-    # ------------------------------------------------------------------
-    def _post(self, url, payload, timeout=30):
-        """Make a POST request with the current session."""
-        # FlareSolverr path
-        if self._session_type == "flaresolverr" and self._fs_client:
-            result = self._fs_client.post_request(url, payload, iChancyAPI._fs_session_id)
-            if result:
-                return FlareSolverrResponse(result)
-            # FlareSolverr failed, fall through
-            logger.warning("FlareSolverr POST failed, result was None")
-            return FlareSolverrResponse({'status_code': 0, 'text': '', 'headers': {}})
+    async def _api_post(self, url, payload, timeout=60):
+        """Make an async POST request to the iChancy API."""
+        headers = await self._get_headers(with_auth=True)
+        cookies = await self._get_cookies_dict()
 
-        # Standard HTTP library path
-        with_auth = bool(self.access_token)
-        headers = self._get_headers(with_auth=with_auth)
-
-        if self._session_type == "curl_cffi":
-            return self.session.post(url, json=payload, headers=headers, timeout=timeout)
+        if HAS_HTTPX and self._http_client:
+            try:
+                response = await self._http_client.post(
+                    url,
+                    json=payload,
+                    headers=headers,
+                    cookies=cookies,
+                    timeout=timeout,
+                )
+                return response
+            except Exception as e:
+                logger.error(f"httpx POST error: {e}")
+                # Fallback to sync requests
+                return await asyncio.to_thread(
+                    self._sync_post, url, payload, headers, cookies, timeout
+                )
+        elif HAS_REQUESTS:
+            return await asyncio.to_thread(
+                self._sync_post, url, payload, headers, cookies, timeout
+            )
         else:
-            return self.session.post(url, json=payload, headers=headers, timeout=timeout)
+            raise RuntimeError("No HTTP library available")
 
-    def _get(self, url, timeout=30):
-        """Make a GET request with the current session."""
-        # FlareSolverr path
-        if self._session_type == "flaresolverr" and self._fs_client:
-            result = self._fs_client.get_request(url, iChancyAPI._fs_session_id)
-            if result:
-                return FlareSolverrResponse(result)
-            return FlareSolverrResponse({'status_code': 0, 'text': '', 'headers': {}})
+    def _sync_post(self, url, payload, headers, cookies, timeout):
+        """Synchronous POST fallback using requests."""
+        session = raw_requests.Session()
+        for name, value in cookies.items():
+            session.cookies.set(name, value, domain='agents.ichancy.com')
+        response = session.post(url, json=payload, headers=headers, timeout=timeout)
+        session.close()
+        return response
 
-        # Standard HTTP library path
-        with_auth = bool(self.access_token)
-        headers = self._get_headers(with_auth=with_auth)
+    async def _api_get(self, url, timeout=60):
+        """Make an async GET request to the iChancy API."""
+        headers = await self._get_headers(with_auth=True)
+        cookies = await self._get_cookies_dict()
 
-        if self._session_type == "curl_cffi":
-            return self.session.get(url, headers=headers, timeout=timeout)
+        if HAS_HTTPX and self._http_client:
+            try:
+                response = await self._http_client.get(
+                    url,
+                    headers=headers,
+                    cookies=cookies,
+                    timeout=timeout,
+                )
+                return response
+            except Exception as e:
+                logger.error(f"httpx GET error: {e}")
+                return await asyncio.to_thread(
+                    self._sync_get, url, headers, cookies, timeout
+                )
+        elif HAS_REQUESTS:
+            return await asyncio.to_thread(
+                self._sync_get, url, headers, cookies, timeout
+            )
         else:
-            return self.session.get(url, headers=headers, timeout=timeout)
+            raise RuntimeError("No HTTP library available")
 
-    # ------------------------------------------------------------------
-    # 403 RECOVERY
-    # ------------------------------------------------------------------
-    def _handle_403(self, response, context="request"):
-        """Handle a 403 by rebuilding the session with a fresh strategy.
+    def _sync_get(self, url, headers, cookies, timeout):
+        """Synchronous GET fallback using requests."""
+        session = raw_requests.Session()
+        for name, value in cookies.items():
+            session.cookies.set(name, value, domain='agents.ichancy.com')
+        response = session.get(url, headers=headers, timeout=timeout)
+        session.close()
+        return response
 
-        Returns True if the session was rebuilt (caller should retry),
-        False if we've exhausted all strategies.
+    # =============================
+    # BROWSER-BASED AUTHENTICATION
+    # =============================
+    async def _browser_signin(self, username, password):
         """
-        is_cf = _is_cloudflare_block(response)
-
-        if is_cf:
-            logger.warning(f"Cloudflare block detected during {context}")
-        else:
-            # Non-Cloudflare 403 – could be API-level permission issue
-            text = getattr(response, 'text', '')[:300]
-            logger.warning(f"403 Forbidden (not Cloudflare) during {context}: {text}")
-            self.access_token = None
-            self.refresh_token = None
-            self.token_expires_at = None
-
-        # Check if we still have strategies to try
-        max_strategy = 3  # raw_requests is the last
-        if self._strategy_index >= max_strategy and self._session_type == "raw_requests":
-            logger.error("All session strategies exhausted - cannot bypass 403")
-            # Reset strategy index so the next attempt starts fresh
-            self._strategy_index = -1  # Start from FlareSolverr again
-            self._curl_profile_index = 0
-            self._cs_browser_index = 0
+        Sign in using Playwright browser automation with stealth mode.
+        This bypasses Cloudflare by using a real Chromium browser.
+        """
+        if not HAS_PLAYWRIGHT:
+            logger.error("Playwright not available for browser-based sign-in")
             return False
 
-        # Rebuild with next strategy
-        self._rebuild_session()
-        return True
+        browser = None
+        try:
+            async with async_playwright() as p:
+                # Launch headless Chromium with Railway-compatible args
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=[
+                        "--no-sandbox",
+                        "--disable-setuid-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
+                        "--disable-extensions",
+                        "--disable-software-rasterizer",
+                    ]
+                )
+
+                # Create context with realistic viewport and user agent
+                context = await browser.new_context(
+                    viewport={"width": 1920, "height": 1080},
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+                    locale="en-US",
+                )
+
+                page = await context.new_page()
+
+                # Apply stealth mode if available
+                if HAS_STEALTH:
+                    await stealth_async(page)
+                    logger.info("Stealth mode applied to browser page")
+
+                # Navigate to login page
+                logger.info(f"Navigating to {self.BASE_URL}/login ...")
+                await page.goto(f"{self.BASE_URL}/login", wait_until="networkidle", timeout=60000)
+
+                # Wait for the login form to appear
+                logger.info("Login page loaded, filling credentials...")
+
+                # Try multiple selectors for the username/email field
+                username_selectors = [
+                    'input[name="username"]',
+                    'input[type="email"]',
+                    'input[placeholder*="user" i]',
+                    'input[placeholder*="email" i]',
+                    'input[id*="user" i]',
+                    'input[id*="email" i]',
+                ]
+
+                username_filled = False
+                for selector in username_selectors:
+                    try:
+                        element = await page.query_selector(selector)
+                        if element:
+                            await element.click()
+                            await element.fill(username)
+                            username_filled = True
+                            logger.info(f"Filled username with selector: {selector}")
+                            break
+                    except Exception:
+                        continue
+
+                if not username_filled:
+                    logger.error("Could not find username/email input field")
+                    # Take screenshot for debugging
+                    try:
+                        await page.screenshot(path="/tmp/login_page_error.png")
+                        logger.info("Screenshot saved to /tmp/login_page_error.png")
+                    except Exception:
+                        pass
+                    await browser.close()
+                    return False
+
+                # Try multiple selectors for the password field
+                password_selectors = [
+                    'input[name="password"]',
+                    'input[type="password"]',
+                    'input[placeholder*="password" i]',
+                    'input[id*="password" i]',
+                ]
+
+                password_filled = False
+                for selector in password_selectors:
+                    try:
+                        element = await page.query_selector(selector)
+                        if element:
+                            await element.click()
+                            await element.fill(password)
+                            password_filled = True
+                            logger.info(f"Filled password with selector: {selector}")
+                            break
+                    except Exception:
+                        continue
+
+                if not password_filled:
+                    logger.error("Could not find password input field")
+                    await browser.close()
+                    return False
+
+                # Click submit button
+                submit_selectors = [
+                    'button[type="submit"]',
+                    'button:has-text("Login")',
+                    'button:has-text("Sign in")',
+                    'button:has-text("تسجيل")',
+                    'input[type="submit"]',
+                ]
+
+                submitted = False
+                for selector in submit_selectors:
+                    try:
+                        element = await page.query_selector(selector)
+                        if element:
+                            await element.click()
+                            submitted = True
+                            logger.info(f"Clicked submit with selector: {selector}")
+                            break
+                    except Exception:
+                        continue
+
+                if not submitted:
+                    logger.error("Could not find submit button")
+                    await browser.close()
+                    return False
+
+                # Wait for navigation after login
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=30000)
+                except Exception:
+                    logger.warning("Timeout waiting for networkidle after login, continuing...")
+
+                # Additional wait for any async token storage
+                await page.wait_for_timeout(3000)
+
+                # Extract token from localStorage
+                token_data = await page.evaluate("""() => {
+                    return {
+                        accessToken: localStorage.getItem('accessToken') || localStorage.getItem('token'),
+                        refreshToken: localStorage.getItem('refreshToken'),
+                        allKeys: Object.keys(localStorage)
+                    };
+                }""")
+
+                logger.info(f"localStorage keys found: {token_data.get('allKeys', [])}")
+
+                self.access_token = token_data.get("accessToken")
+                self.refresh_token = token_data.get("refreshToken")
+
+                # Extract cookies from browser context
+                iChancyAPI._browser_cookies = await context.cookies()
+                logger.info(f"Extracted {len(iChancyAPI._browser_cookies)} cookies from browser")
+
+                await browser.close()
+                browser = None
+
+                if self.access_token:
+                    self.token_expires_at = datetime.now() + timedelta(hours=1)
+                    self._authenticated = True
+                    logger.info("Successfully obtained access token via browser sign-in")
+                    iChancyAPI._last_auth_time = datetime.now()
+                    return True
+                else:
+                    logger.error("No access token found in localStorage after login")
+                    # Take screenshot for debugging (before closing browser)
+                    return False
+
+        except Exception as e:
+            logger.error(f"Browser sign-in error: {e}", exc_info=True)
+            if browser:
+                try:
+                    await browser.close()
+                except Exception:
+                    pass
+            return False
 
     # =============================
     # AUTHENTICATION
     # =============================
-    def _ensure_authenticated(self):
-        """Ensure we have a valid access token."""
+    async def ensure_authenticated(self):
+        """Ensure we have a valid access token. Uses browser sign-in if needed."""
         try:
-            if not self.access_token or self._is_token_expired():
-                if self.refresh_token and not self._is_refresh_expired():
-                    logger.info("Token expired, attempting refresh...")
-                    if not self._refresh_token():
-                        logger.info("Refresh failed, performing new sign-in...")
-                        self._sign_in()
-                else:
-                    logger.info("No valid tokens, performing sign-in...")
-                    self._sign_in()
-
-            if self.access_token:
+            # Check manual token
+            if self.access_token and os.getenv('ICHANCY_ACCESS_TOKEN', '').strip():
                 return True
-            else:
-                logger.error("Failed to obtain access token")
-                return False
+
+            # Check if token is still valid
+            if self.access_token and not self._is_token_expired():
+                return True
+
+            # Need to re-authenticate
+            logger.info("Token expired or missing, performing browser sign-in...")
+            return await self._do_signin()
 
         except Exception as e:
             logger.error(f"Authentication error: {e}", exc_info=True)
             return False
 
-    def _is_token_expired(self):
-        if not self.token_expires_at:
-            return True
-        return datetime.now() >= self.token_expires_at
-
-    def _is_refresh_expired(self):
-        # Refresh tokens last 7 days
-        return False
-
-    def _sign_in(self):
-        """Sign in to iChancy API with multi-strategy retry logic.
-
-        On 403 the entire session is torn down and rebuilt with the next
-        available TLS-fingerprint / strategy.  We cycle through all
-        strategies before giving up.
-        """
+    async def _do_signin(self):
+        """Perform sign-in using the best available method."""
         username = os.getenv('ICHANCY_USERNAME', '').strip()
         password = os.getenv('ICHANCY_PASSWORD', '').strip()
 
@@ -662,179 +447,95 @@ class iChancyAPI:
             logger.error("MISSING iChancy credentials (ICHANCY_USERNAME / ICHANCY_PASSWORD)")
             return False
 
-        url = f"{self.API_BASE}/UserApi/signin"
-        payload = {
-            "username": username,
-            "password": password
-        }
-
-        max_retries = 4  # Reduced retries since each 403 wastes time
-        for attempt in range(max_retries):
-            try:
-                logger.info(f"Sign-in attempt {attempt + 1}/{max_retries} (strategy: {self._session_type})...")
-
-                # Small random jitter to avoid looking robotic
-                if attempt > 0:
-                    jitter = random.uniform(1.0, 3.0)
-                    time.sleep(jitter)
-
-                response = self._post(url, payload, timeout=60)
-                status = getattr(response, 'status_code', 0)
-
-                logger.info(f"Sign-in response status: {status} (strategy: {self._session_type})")
-
-                # ---- 403 handling ----
-                if status == 403:
-                    can_retry = self._handle_403(response, context="sign-in")
-                    if can_retry and attempt < max_retries - 1:
-                        continue
-                    else:
-                        logger.error("All sign-in attempts blocked (403)")
-                        return False
-
-                # ---- 503 handling (Cloudflare challenge page) ----
-                if status == 503:
-                    if _is_cloudflare_block(response):
-                        logger.warning(f"Cloudflare 503 challenge (attempt {attempt + 1})")
-                        can_retry = self._handle_403(response, context="sign-in-503")
-                        if can_retry and attempt < max_retries - 1:
-                            continue
-                        return False
-                    logger.error(f"503 Service Unavailable (not Cloudflare)")
-                    if attempt < max_retries - 1:
-                        continue
-                    return False
-
-                # ---- API-level auth failure ----
-                if status == 201:
-                    logger.error("Sign-in failed: API returned 201 (unauthorized) - check credentials")
-                    return False
-
-                if status == 401:
-                    logger.error("Sign-in failed: 401 Unauthorized - check credentials")
-                    return False
-
-                if status != 200:
-                    logger.error(f"Sign-in failed with HTTP {status}")
-                    resp_text = getattr(response, 'text', '')[:500]
-                    logger.error(f"Response: {resp_text}")
-                    if attempt < max_retries - 1:
-                        self._rebuild_session()
-                        continue
-                    return False
-
-                # ---- Parse JSON response ----
+        # Try browser-based sign-in (best Cloudflare bypass)
+        if HAS_PLAYWRIGHT:
+            logger.info("Attempting browser-based sign-in with Playwright...")
+            for attempt in range(2):
                 try:
-                    data = response.json()
+                    success = await self._browser_signin(username, password)
+                    if success:
+                        return True
+                    logger.warning(f"Browser sign-in attempt {attempt + 1} failed, retrying...")
+                    await asyncio.sleep(2)
                 except Exception as e:
-                    logger.error(f"Failed to parse sign-in response: {e}")
-                    text = getattr(response, 'text', '')[:200]
-                    logger.error(f"Response text: {text}")
-                    if attempt < max_retries - 1:
-                        self._rebuild_session()
-                        continue
-                    return False
+                    logger.error(f"Browser sign-in attempt {attempt + 1} error: {e}")
+                    await asyncio.sleep(2)
 
-                if not data.get('status'):
-                    logger.error("API returned status=false")
-                    notifications = data.get('notification', [])
-                    if notifications:
-                        error_msg = notifications[0].get('content', 'Unknown error')
-                        logger.error(f"Error: {error_msg}")
-                    return False
+        # Fallback: try direct API sign-in (may work if Cloudflare isn't blocking)
+        logger.info("Trying direct API sign-in as fallback...")
+        return await self._direct_api_signin(username, password)
 
-                result = data.get('result')
-                if not result:
-                    logger.error("Sign-in returned no result")
-                    return False
-
-                self.access_token = result.get('accessToken')
-                self.refresh_token = result.get('refreshToken')
-
-                if not self.access_token:
-                    logger.error("No access token received from sign-in")
-                    return False
-
-                # Set token expiration (1 hour)
-                self.token_expires_at = datetime.now() + timedelta(hours=1)
-
-                # Persist cookies from this session for future reuse
-                self._persist_cookies()
-
-                logger.info("Successfully signed in to iChancy API")
-                iChancyAPI._last_auth_time = datetime.now()
-
-                # Reset strategy indices so the next auth cycle starts fresh
-                self._strategy_index = -1
-                self._curl_profile_index = 0
-                self._cs_browser_index = 0
-
-                return True
-
-            except Exception as e:
-                logger.error(f"Sign-in exception (attempt {attempt + 1}): {e}")
-                if attempt < max_retries - 1:
-                    self._rebuild_session()
-                else:
-                    return False
-
-        return False
-
-    def _refresh_token(self):
-        """Refresh access token using refresh token."""
+    async def _direct_api_signin(self, username, password):
+        """Fallback: Try direct API sign-in without browser."""
         try:
-            url = f"{self.API_BASE}/UserApi/refreshToken"
-            payload = {"refreshToken": self.refresh_token}
+            url = f"{self.API_BASE}/UserApi/signin"
+            payload = {"username": username, "password": password}
 
-            logger.info("Refreshing iChancy API token...")
-            response = self._post(url, payload, timeout=30)
+            headers = {
+                'Content-Type': 'application/json',
+                'Origin': self.BASE_URL,
+                'Referer': self.BASE_URL + '/',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            }
 
-            status = getattr(response, 'status_code', 0)
-
-            if status == 403:
-                can_retry = self._handle_403(response, context="token-refresh")
-                if can_retry:
-                    try:
-                        response = self._post(url, payload, timeout=30)
-                        status = getattr(response, 'status_code', 0)
-                    except Exception as e:
-                        logger.error(f"Token refresh retry failed: {e}")
-                        return self._sign_in()
-
-            if status != 200:
-                logger.warning("Token refresh failed, will sign in again")
-                return self._sign_in()
-
-            try:
-                data = response.json()
-            except Exception:
-                logger.error("Invalid JSON from token refresh")
+            if HAS_HTTPX and self._http_client:
+                response = await self._http_client.post(
+                    url, json=payload, headers=headers, timeout=30
+                )
+            elif HAS_REQUESTS:
+                response = await asyncio.to_thread(
+                    raw_requests.post, url, json=payload, headers=headers, timeout=30
+                )
+            else:
                 return False
 
-            if not data.get('status') or not data.get('result'):
-                return self._sign_in()
+            status = response.status_code if hasattr(response, 'status_code') else 0
 
-            result = data['result']
+            if status == 403:
+                logger.warning("Direct API sign-in blocked by Cloudflare (403)")
+                return False
+
+            if status != 200:
+                logger.error(f"Direct API sign-in failed with HTTP {status}")
+                return False
+
+            data = response.json() if hasattr(response, 'json') else {}
+            if callable(data):
+                data = data()
+
+            if not data.get('status'):
+                logger.error("API returned status=false")
+                return False
+
+            result = data.get('result', {})
             self.access_token = result.get('accessToken')
             self.refresh_token = result.get('refreshToken')
-            self.token_expires_at = datetime.now() + timedelta(hours=1)
 
-            # Persist cookies
-            self._persist_cookies()
-
-            logger.info("Successfully refreshed token")
-            return True
+            if self.access_token:
+                self.token_expires_at = datetime.now() + timedelta(hours=1)
+                self._authenticated = True
+                logger.info("Direct API sign-in successful")
+                return True
+            else:
+                logger.error("No access token from direct API sign-in")
+                return False
 
         except Exception as e:
-            logger.error(f"Token refresh error: {e}")
+            logger.error(f"Direct API sign-in error: {e}")
             return False
+
+    def _is_token_expired(self):
+        """Check if the current token has expired."""
+        if not self.token_expires_at:
+            return True
+        return datetime.now() >= self.token_expires_at
 
     # =============================
     # PLAYER MANAGEMENT
     # =============================
-    def register_player(self, username, password, email, parent_id=None):
-        """Register a new player using the official API."""
-        if not self._ensure_authenticated():
+    async def register_player(self, username, password, email, parent_id=None):
+        """Register a new player using the API."""
+        if not await self.ensure_authenticated():
             return {'success': False, 'error': 'فشل في المصادقة مع خوادم iChancy - يرجى المحاولة لاحقاً'}
 
         try:
@@ -858,26 +559,28 @@ class iChancyAPI:
 
             logger.info(f"Registering player: {username}, parent_id: {parent_id}")
 
-            response = self._post(url, payload, timeout=30)
-            status = getattr(response, 'status_code', 0)
+            response = await self._api_post(url, payload, timeout=60)
+            status = response.status_code if hasattr(response, 'status_code') else 0
 
             logger.info(f"Register response status: {status}")
 
             if status == 403:
-                can_retry = self._handle_403(response, context="register_player")
-                if can_retry and self._ensure_authenticated():
-                    response = self._post(url, payload, timeout=30)
-                    status = getattr(response, 'status_code', 0)
+                # Try re-authenticating and retrying
+                logger.warning("Got 403 on register, re-authenticating...")
+                iChancyAPI.reset_shared()
+                if await self.ensure_authenticated():
+                    response = await self._api_post(url, payload, timeout=60)
+                    status = response.status_code if hasattr(response, 'status_code') else 0
                     logger.info(f"Register retry status: {status}")
 
                 if status == 403:
-                    if _is_cloudflare_block(response):
-                        return {'success': False, 'error': 'Cloudflare يحظر الاتصال - يرجى المحاولة لاحقاً'}
-                    return {'success': False, 'error': 'فشل في التسجيل - خطأ 403'}
+                    return {'success': False, 'error': 'Cloudflare يحظر الاتصال - يرجى المحاولة لاحقاً'}
 
             if status == 422:
                 try:
-                    data = response.json()
+                    data = response.json() if hasattr(response, 'json') else {}
+                    if callable(data):
+                        data = data()
                     notifications = data.get('notification', [])
                     if notifications:
                         error_msg = notifications[0].get('content', 'خطأ في التحقق')
@@ -890,7 +593,9 @@ class iChancyAPI:
                 return {'success': False, 'error': f'خطأ HTTP {status}'}
 
             try:
-                data = response.json()
+                data = response.json() if hasattr(response, 'json') else {}
+                if callable(data):
+                    data = data()
             except Exception:
                 return {'success': False, 'error': 'استجابة غير صالحة من الخادم'}
 
@@ -909,9 +614,9 @@ class iChancyAPI:
             logger.error(f"Register player exception: {e}", exc_info=True)
             return {'success': False, 'error': str(e)}
 
-    def get_players_for_current_agent(self, player_id=None, username=None, limit=20):
+    async def get_players_for_current_agent(self, player_id=None, username=None, limit=20):
         """Get players for the current agent."""
-        if not self._ensure_authenticated():
+        if not await self.ensure_authenticated():
             return {'success': False, 'error': 'Authentication failed'}
 
         try:
@@ -936,20 +641,22 @@ class iChancyAPI:
                     "valueLabel": username
                 }
 
-            response = self._post(url, payload, timeout=30)
-            status = getattr(response, 'status_code', 0)
+            response = await self._api_post(url, payload, timeout=30)
+            status = response.status_code if hasattr(response, 'status_code') else 0
 
             if status == 403:
-                can_retry = self._handle_403(response, context="get_players")
-                if can_retry and self._ensure_authenticated():
-                    response = self._post(url, payload, timeout=30)
-                    status = getattr(response, 'status_code', 0)
+                iChancyAPI.reset_shared()
+                if await self.ensure_authenticated():
+                    response = await self._api_post(url, payload, timeout=30)
+                    status = response.status_code if hasattr(response, 'status_code') else 0
 
             if status != 200:
                 return {'success': False, 'error': f'HTTP {status}'}
 
             try:
-                data = response.json()
+                data = response.json() if hasattr(response, 'json') else {}
+                if callable(data):
+                    data = data()
             except Exception:
                 return {'success': False, 'error': 'Invalid JSON response'}
 
@@ -968,29 +675,38 @@ class iChancyAPI:
             logger.error(f"Get players exception: {e}", exc_info=True)
             return {'success': False, 'error': str(e)}
 
-    def get_player_balance_by_id(self, player_id):
+    async def get_player_id_by_username(self, username):
+        """Get player ID by username."""
+        result = await self.get_players_for_current_agent(username=username)
+        if result.get('success') and result.get('player'):
+            return result['player'].get('id') or result['player'].get('playerId')
+        return None
+
+    async def get_player_balance_by_id(self, player_id):
         """Get player balance by ID."""
-        if not self._ensure_authenticated():
+        if not await self.ensure_authenticated():
             return {'success': False, 'error': 'Authentication failed'}
 
         try:
             url = f"{self.API_BASE}/UserApi/getPlayerBalanceById"
             payload = {"playerId": player_id}
 
-            response = self._post(url, payload, timeout=30)
-            status = getattr(response, 'status_code', 0)
+            response = await self._api_post(url, payload, timeout=30)
+            status = response.status_code if hasattr(response, 'status_code') else 0
 
             if status == 403:
-                can_retry = self._handle_403(response, context="get_balance")
-                if can_retry and self._ensure_authenticated():
-                    response = self._post(url, payload, timeout=30)
-                    status = getattr(response, 'status_code', 0)
+                iChancyAPI.reset_shared()
+                if await self.ensure_authenticated():
+                    response = await self._api_post(url, payload, timeout=30)
+                    status = response.status_code if hasattr(response, 'status_code') else 0
 
             if status != 200:
                 return {'success': False, 'error': f'HTTP {status}'}
 
             try:
-                data = response.json()
+                data = response.json() if hasattr(response, 'json') else {}
+                if callable(data):
+                    data = data()
             except Exception:
                 return {'success': False, 'error': 'Invalid JSON response'}
 
@@ -1008,12 +724,25 @@ class iChancyAPI:
             logger.error(f"Get player balance error: {e}")
             return {'success': False, 'error': str(e)}
 
+    async def get_player_balance_by_username(self, username):
+        """Get player balance by username."""
+        player_result = await self.get_players_for_current_agent(username=username)
+        if not player_result.get('success'):
+            return player_result
+
+        player = player_result.get('player', {})
+        player_id = player.get('id') or player.get('playerId')
+        if not player_id:
+            return {'success': False, 'error': 'Player not found'}
+
+        return await self.get_player_balance_by_id(player_id)
+
     # =============================
     # TRANSACTIONS
     # =============================
-    def deposit_to_player(self, player_id, amount, comment="Bot deposit", currency="NSP"):
+    async def deposit_to_player(self, player_id, amount, comment="Bot deposit", currency="NSP"):
         """Deposit money to player account."""
-        if not self._ensure_authenticated():
+        if not await self.ensure_authenticated():
             return {'success': False, 'error': 'Authentication failed'}
 
         try:
@@ -1028,56 +757,48 @@ class iChancyAPI:
             }
 
             logger.info(f"Depositing {amount} {currency} to player {player_id}")
-            response = self._post(url, payload, timeout=30)
-            status = getattr(response, 'status_code', 0)
+            response = await self._api_post(url, payload, timeout=30)
+            status = response.status_code if hasattr(response, 'status_code') else 0
 
             if status == 403:
-                can_retry = self._handle_403(response, context="deposit")
-                if can_retry and self._ensure_authenticated():
-                    response = self._post(url, payload, timeout=30)
-                    status = getattr(response, 'status_code', 0)
-
-            if status == 422:
-                try:
-                    data = response.json()
-                    notifications = data.get('notification', [])
-                    if notifications:
-                        return {'success': False, 'error': notifications[0].get('content', 'Deposit failed')}
-                except Exception:
-                    pass
-                return {'success': False, 'error': 'Validation failed'}
+                iChancyAPI.reset_shared()
+                if await self.ensure_authenticated():
+                    response = await self._api_post(url, payload, timeout=30)
+                    status = response.status_code if hasattr(response, 'status_code') else 0
 
             if status != 200:
                 return {'success': False, 'error': f'HTTP {status}'}
 
             try:
-                data = response.json()
+                data = response.json() if hasattr(response, 'json') else {}
+                if callable(data):
+                    data = data()
             except Exception:
                 return {'success': False, 'error': 'Invalid JSON response'}
 
             if not data.get('status'):
                 notifications = data.get('notification', [])
                 if notifications:
-                    return {'success': False, 'error': notifications[0].get('content', 'Deposit failed')}
+                    error_msg = notifications[0].get('content', 'Deposit failed')
+                    return {'success': False, 'error': error_msg}
                 return {'success': False, 'error': 'Deposit failed'}
 
-            result = data.get('result', {})
-            new_balance = result.get('balance', 0)
-            return {'success': True, 'new_balance': new_balance, 'data': data}
+            logger.info(f"Deposit successful for player {player_id}")
+            return {'success': True, 'data': data}
 
         except Exception as e:
-            logger.error(f"Deposit error: {e}")
+            logger.error(f"Deposit error: {e}", exc_info=True)
             return {'success': False, 'error': str(e)}
 
-    def withdraw_from_player(self, player_id, amount, comment="Bot withdraw", currency="NSP"):
+    async def withdraw_from_player(self, player_id, amount, comment="Bot withdraw", currency="NSP"):
         """Withdraw money from player account."""
-        if not self._ensure_authenticated():
+        if not await self.ensure_authenticated():
             return {'success': False, 'error': 'Authentication failed'}
 
         try:
             url = f"{self.API_BASE}/UserApi/withdrawFromPlayer"
             payload = {
-                "amount": -float(amount),
+                "amount": float(amount),
                 "comment": comment,
                 "playerId": player_id,
                 "currencyCode": currency,
@@ -1086,113 +807,117 @@ class iChancyAPI:
             }
 
             logger.info(f"Withdrawing {amount} {currency} from player {player_id}")
-            response = self._post(url, payload, timeout=30)
-            status = getattr(response, 'status_code', 0)
+            response = await self._api_post(url, payload, timeout=30)
+            status = response.status_code if hasattr(response, 'status_code') else 0
 
             if status == 403:
-                can_retry = self._handle_403(response, context="withdraw")
-                if can_retry and self._ensure_authenticated():
-                    response = self._post(url, payload, timeout=30)
-                    status = getattr(response, 'status_code', 0)
-
-            if status == 422:
-                try:
-                    data = response.json()
-                    notifications = data.get('notification', [])
-                    if notifications:
-                        return {'success': False, 'error': notifications[0].get('content', 'Withdrawal failed')}
-                except Exception:
-                    pass
-                return {'success': False, 'error': 'Validation failed'}
+                iChancyAPI.reset_shared()
+                if await self.ensure_authenticated():
+                    response = await self._api_post(url, payload, timeout=30)
+                    status = response.status_code if hasattr(response, 'status_code') else 0
 
             if status != 200:
                 return {'success': False, 'error': f'HTTP {status}'}
 
             try:
-                data = response.json()
+                data = response.json() if hasattr(response, 'json') else {}
+                if callable(data):
+                    data = data()
             except Exception:
                 return {'success': False, 'error': 'Invalid JSON response'}
 
             if not data.get('status'):
                 notifications = data.get('notification', [])
                 if notifications:
-                    return {'success': False, 'error': notifications[0].get('content', 'Withdrawal failed')}
+                    error_msg = notifications[0].get('content', 'Withdrawal failed')
+                    return {'success': False, 'error': error_msg}
                 return {'success': False, 'error': 'Withdrawal failed'}
 
-            result = data.get('result', {})
-            new_balance = result.get('balance', 0)
-            return {'success': True, 'new_balance': new_balance, 'data': data}
+            logger.info(f"Withdrawal successful for player {player_id}")
+            return {'success': True, 'data': data}
 
         except Exception as e:
-            logger.error(f"Withdraw error: {e}")
+            logger.error(f"Withdrawal error: {e}", exc_info=True)
             return {'success': False, 'error': str(e)}
 
-    # =============================
-    # AGENT WALLET
-    # =============================
-    def get_agent_wallets(self):
-        """Get agent wallet information."""
-        if not self._ensure_authenticated():
-            return {'success': False, 'error': 'Authentication failed'}
-
-        try:
-            url = f"{self.API_BASE}/UserApi/getAgentAllWallets"
-            payload = {}
-
-            response = self._post(url, payload, timeout=30)
-            status = getattr(response, 'status_code', 0)
-
-            if status == 403:
-                can_retry = self._handle_403(response, context="get_wallets")
-                if can_retry and self._ensure_authenticated():
-                    response = self._post(url, payload, timeout=30)
-                    status = getattr(response, 'status_code', 0)
-
-            if status != 200:
-                return {'success': False, 'error': f'HTTP {status}'}
-
-            try:
-                data = response.json()
-            except Exception:
-                return {'success': False, 'error': 'Invalid JSON response'}
-
-            if not data.get('status'):
-                return {'success': False, 'error': 'API request failed'}
-
-            wallets = data.get('result', [])
-            return {'success': True, 'wallets': wallets, 'data': data}
-
-        except Exception as e:
-            logger.error(f"Get agent wallets error: {e}")
-            return {'success': False, 'error': str(e)}
-
-    # =============================
-    # HELPER METHODS
-    # =============================
-    def get_player_id_by_username(self, username):
-        """Get player ID by username."""
-        result = self.get_players_for_current_agent(username=username)
-        if result['success']:
-            return result['player'].get('playerId')
-        return None
-
-    def get_player_balance_by_username(self, username):
-        """Get player balance by username."""
-        player_id = self.get_player_id_by_username(username)
-        if player_id:
-            return self.get_player_balance_by_id(player_id)
-        return {'success': False, 'error': 'Player not found'}
-
-    def deposit_to_player_by_username(self, username, amount, comment="Bot deposit"):
+    async def deposit_to_player_by_username(self, username, amount, comment="Bot deposit"):
         """Deposit to player by username."""
-        player_id = self.get_player_id_by_username(username)
-        if player_id:
-            return self.deposit_to_player(player_id, amount, comment)
-        return {'success': False, 'error': 'Player not found'}
+        player_result = await self.get_players_for_current_agent(username=username)
+        if not player_result.get('success'):
+            return player_result
 
-    def withdraw_from_player_by_username(self, username, amount, comment="Bot withdraw"):
+        player = player_result.get('player', {})
+        player_id = player.get('id') or player.get('playerId')
+        if not player_id:
+            return {'success': False, 'error': 'Player not found'}
+
+        return await self.deposit_to_player(player_id, amount, comment)
+
+    async def withdraw_from_player_by_username(self, username, amount, comment="Bot withdraw"):
         """Withdraw from player by username."""
-        player_id = self.get_player_id_by_username(username)
-        if player_id:
-            return self.withdraw_from_player(player_id, amount, comment)
-        return {'success': False, 'error': 'Player not found'}
+        player_result = await self.get_players_for_current_agent(username=username)
+        if not player_result.get('success'):
+            return player_result
+
+        player = player_result.get('player', {})
+        player_id = player.get('id') or player.get('playerId')
+        if not player_id:
+            return {'success': False, 'error': 'Player not found'}
+
+        return await self.withdraw_from_player(player_id, amount, comment)
+
+    # =============================
+    # SYNC COMPATIBILITY LAYER
+    # =============================
+    # The old API was synchronous. Some callers may still use sync methods.
+    # We provide sync wrappers that run the async methods in an event loop.
+
+    def _run_async(self, coro):
+        """Run an async coroutine from sync context."""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # We're inside an already-running event loop (e.g., python-telegram-bot)
+                # Create a new loop in a thread
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    future = pool.submit(asyncio.run, coro)
+                    return future.result(timeout=120)
+            else:
+                return loop.run_until_complete(coro)
+        except RuntimeError:
+            return asyncio.run(coro)
+
+    def sync_ensure_authenticated(self):
+        """Sync wrapper for ensure_authenticated."""
+        return self._run_async(self.ensure_authenticated())
+
+    def sync_register_player(self, username, password, email, parent_id=None):
+        """Sync wrapper for register_player."""
+        return self._run_async(self.register_player(username, password, email, parent_id))
+
+    def sync_get_player_id_by_username(self, username):
+        """Sync wrapper for get_player_id_by_username."""
+        return self._run_async(self.get_player_id_by_username(username))
+
+    def sync_get_player_balance_by_username(self, username):
+        """Sync wrapper for get_player_balance_by_username."""
+        return self._run_async(self.get_player_balance_by_username(username))
+
+    def sync_deposit_to_player_by_username(self, username, amount, comment="Bot deposit"):
+        """Sync wrapper for deposit_to_player_by_username."""
+        return self._run_async(self.deposit_to_player_by_username(username, amount, comment))
+
+    def sync_withdraw_from_player_by_username(self, username, amount, comment="Bot withdraw"):
+        """Sync wrapper for withdraw_from_player_by_username."""
+        return self._run_async(self.withdraw_from_player_by_username(username, amount, comment))
+
+    # Legacy sync method names for backward compatibility
+    # These will be called by code that hasn't been updated to async yet
+    def _ensure_authenticated(self):
+        """Legacy sync auth - triggers browser sign-in via thread."""
+        return self.sync_ensure_authenticated()
+
+    def register_player_sync(self, username, password, email, parent_id=None):
+        """Legacy sync register_player."""
+        return self.sync_register_player(username, password, email, parent_id)

@@ -109,8 +109,8 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
             )
             return
 
-        # REGISTER ACCOUNT
-        result = api.register_player(
+        # REGISTER ACCOUNT (async)
+        result = await api.register_player(
             username=name,
             password=password,
             email=email,
@@ -121,11 +121,11 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
 
         await asyncio.sleep(3)
 
-        # VERIFY USER - get player ID
+        # VERIFY USER - get player ID (async)
         verify = None
         for i in range(3):
             try:
-                verify = api.get_player_id_by_username(name)
+                verify = await api.get_player_id_by_username(name)
                 logger.info(f"Verification attempt {i+1}: {verify}")
             except Exception as e:
                 logger.error(f"VERIFY ERROR (attempt {i+1}): {e}")

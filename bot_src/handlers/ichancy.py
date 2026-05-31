@@ -186,7 +186,7 @@ async def handle_deposit_amount(update, context):
     if not api:
         await update.message.reply_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
         return
-    result = api.deposit_to_player_by_username(
+    result = await api.deposit_to_player_by_username(
         username=account["username"],
         amount=amount
     )
@@ -224,7 +224,7 @@ async def handle_withdraw_amount(update, context):
     if not api:
         await update.message.reply_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
         return
-    result = api.withdraw_from_player_by_username(
+    result = await api.withdraw_from_player_by_username(
         username=account["username"] if account else None,
         amount=amount
     )
@@ -250,7 +250,7 @@ async def ichancy_deposit_all(update, context):
         await query.edit_message_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
         return
 
-    balance_result = api.get_player_balance_by_username(account["username"])
+    balance_result = await api.get_player_balance_by_username(account["username"])
 
     if not balance_result['success']:
         await query.edit_message_text("❌ لا يمكن جلب الرصيد")
@@ -262,7 +262,7 @@ async def ichancy_deposit_all(update, context):
         await query.edit_message_text("❌ لا يوجد رصيد")
         return
 
-    result = api.withdraw_from_player_by_username(
+    result = await api.withdraw_from_player_by_username(
         username=account["username"],
         amount=balance
     )
@@ -288,7 +288,7 @@ async def ichancy_balance(update, context):
         await query.edit_message_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
         return
 
-    balance_result = api.get_player_balance_by_username(account["username"])
+    balance_result = await api.get_player_balance_by_username(account["username"])
 
     if balance_result and balance_result.get('success'):
         balance = balance_result.get('balance', 0)
@@ -343,7 +343,7 @@ async def handle_ichancy_text(update, context):
         if not api:
             await update.message.reply_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
             return
-        res = api.register_player(
+        res = await api.register_player(
             username=username,
             password=password,
             email=email
@@ -352,7 +352,7 @@ async def handle_ichancy_text(update, context):
         if res and res.get("success"):
             player_id = res.get('player_id')
             if not player_id:
-                player_id = api.get_player_id_by_username(username)
+                player_id = await api.get_player_id_by_username(username)
 
             context.user_data['ichancy_account'] = username
             context.user_data['ichancy_password'] = password

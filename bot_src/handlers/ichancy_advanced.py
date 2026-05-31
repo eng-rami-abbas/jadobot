@@ -50,7 +50,7 @@ async def ichancy_account_info(update: Update, context: ContextTypes.DEFAULT_TYP
         api = handlers.ichancy.get_api()
         site_balance = "غير متاح"
         if api:
-            balance_result = api.get_player_balance_by_username(username)
+            balance_result = await api.get_player_balance_by_username(username)
             if balance_result.get('success'):
                 site_balance = balance_result.get('balance', 0)
         
@@ -165,7 +165,7 @@ async def handle_ichancy_deposit_amount(update: Update, context: ContextTypes.DE
         if not api:
             await update.message.reply_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
             return
-        deposit_result = api.deposit_to_player(player_id, amount, "Telegram Bot Deposit")
+        deposit_result = await api.deposit_to_player(player_id, amount, "Telegram Bot Deposit")
         
         if deposit_result.get('success'):
             new_site_balance = deposit_result.get('new_balance', 0)
@@ -235,7 +235,7 @@ async def ichancy_withdraw_advanced(update: Update, context: ContextTypes.DEFAUL
         site_balance = "غير متاح"
         api = handlers.ichancy.get_api()
         if api:
-            balance_result = api.get_player_balance_by_username(username)
+            balance_result = await api.get_player_balance_by_username(username)
             if balance_result.get('success'):
                 site_balance = balance_result.get('balance', 0)
         
@@ -286,7 +286,7 @@ async def handle_ichancy_withdraw_amount(update: Update, context: ContextTypes.D
             await update.message.reply_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
             return
         
-        balance_check = api.get_player_balance_by_id(player_id)
+        balance_check = await api.get_player_balance_by_id(player_id)
         if balance_check.get('success'):
             site_balance = balance_check.get('balance', 0)
             if site_balance < amount:
@@ -300,7 +300,7 @@ async def handle_ichancy_withdraw_amount(update: Update, context: ContextTypes.D
                 return
         
         # تنفيذ عملية السحب من الموقع
-        withdraw_result = api.withdraw_from_player(player_id, amount, "Telegram Bot Withdraw")
+        withdraw_result = await api.withdraw_from_player(player_id, amount, "Telegram Bot Withdraw")
         
         if withdraw_result.get('success'):
             new_site_balance = withdraw_result.get('new_balance', 0)
@@ -444,7 +444,7 @@ async def ichancy_deposit_all_advanced(update: Update, context: ContextTypes.DEF
         if not api:
             await query.edit_message_text("❌ لا يمكن الاتصال بخوادم iChancy حالياً")
             return
-        balance_result = api.get_player_balance_by_id(player_id)
+        balance_result = await api.get_player_balance_by_id(player_id)
         
         if not balance_result.get('success'):
             await query.edit_message_text("❌ لا يمكن جلب الرصيد")
@@ -457,7 +457,7 @@ async def ichancy_deposit_all_advanced(update: Update, context: ContextTypes.DEF
             return
         
         # سحب كامل الرصيد من الموقع
-        withdraw_result = api.withdraw_from_player(
+        withdraw_result = await api.withdraw_from_player(
             player_id, 
             current_balance, 
             "Telegram Bot - Transfer All to Bot Balance"
