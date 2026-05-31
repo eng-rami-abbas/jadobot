@@ -234,13 +234,9 @@ class iChancyAPI:
         browser = None
         try:
             async with async_playwright() as p:
-                # Launch headless Firefox with Railway-compatible args
+                # Launch headless Firefox (no Chromium-specific args needed)
                 browser = await p.firefox.launch(
                     headless=True,
-                    args=[
-                        "--no-sandbox",
-                        "--disable-setuid-sandbox",
-                    ]
                 )
 
                 # Create context with realistic viewport and user agent
@@ -259,7 +255,17 @@ class iChancyAPI:
 
                 # Navigate to login page
                 logger.info(f"Navigating to {self.BASE_URL}/login with Firefox ...")
-                await page.goto(f"{self.BASE_URL}/login", wait_until="networkidle", timeout=60000)
+                try:
+                    await page.goto(f"{self.BASE_URL}/login", wait_until="networkidle", timeout=60000)
+                except Exception as nav_err:
+                    logger.warning(f"networkidle timeout on login page, trying domcontentloaded: {nav_err}")
+                    try:
+                        await page.goto(f"{self.BASE_URL}/login", wait_until="domcontentloaded", timeout=60000)
+                        await page.wait_for_timeout(5000)
+                    except Exception as nav_err2:
+                        logger.error(f"Failed to navigate to login page: {nav_err2}")
+                        await browser.close()
+                        return False
 
                 # Wait for the login form to appear
                 logger.info("Login page loaded, filling credentials...")

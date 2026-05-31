@@ -217,9 +217,24 @@ analytics_system = AnalyticsSystem()
 class AdminHandler:
     """فئة معالج صلاحيات الإدمن"""
     
-    BOT_STATUS = True
+    BOT_STATUS = True  # Will be synced with Supabase on first check
     MAINTENANCE_MESSAGE = "🔧 البوت في حالة صيانة مؤقتة. نعتذر للإزعاج وسنعود قريباً!"
     JACKPOT_WINNERS = []
+    _status_synced = False
+    
+    @staticmethod
+    def _sync_status_from_supabase():
+        """Sync BOT_STATUS with Supabase app_settings on first access."""
+        if AdminHandler._status_synced:
+            return
+        try:
+            result = supa.get_client().table("app_settings").select("value").eq("key", "bot_status").execute()
+            if result.data:
+                status = result.data[0].get("value", "active")
+                AdminHandler.BOT_STATUS = (status == "active")
+            AdminHandler._status_synced = True
+        except Exception as e:
+            logger.error(f"Failed to sync bot status from Supabase: {e}")
     
     @staticmethod
     def is_admin(user_id: str) -> bool:
@@ -343,6 +358,9 @@ class AdminHandler:
             await update.callback_query.answer("❌ ليس لديك صلاحية الوصول إلى لوحة الإدمن", show_alert=True)
             return
         
+        # Sync BOT_STATUS with Supabase
+        AdminHandler._sync_status_from_supabase()
+        
         try:
             today_stats = analytics_system.get_daily_stats()
             total_users = len(analytics_system.data.get("users", {}))
@@ -407,6 +425,8 @@ class AdminHandler:
     
     @staticmethod
     async def manage_bot_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        # Sync BOT_STATUS with Supabase
+        AdminHandler._sync_status_from_supabase()
         current_status = "🟢 نشط" if AdminHandler.BOT_STATUS else "🔴 متوقف للصيانة"
         keyboard = [
             [
@@ -433,6 +453,25 @@ class AdminHandler:
             return
         AdminHandler.BOT_STATUS = True
         logger.info(f"البوت تم تشغيله بواسطة الإدمن {update.effective_user.id}")
+        
+        # Update Supabase app_settings so the guard picks up the new status
+        try:
+            supa.get_client().table("app_settings").upsert(
+                {"key": "bot_status", "value": "active"},
+                on_conflict="key"
+            ).execute()
+            logger.info("Updated bot_status to 'active' in Supabase app_settings")
+        except Exception as e:
+            logger.error(f"Failed to update bot_status in Supabase: {e}")
+        
+        # Invalidate the bot_status cache so the guard picks up the new status immediately
+        try:
+            from handlers.bot_status import _cache
+            _cache["status"] = "active"
+            _cache["expires"] = 0  # Force cache refresh on next check
+        except Exception:
+            pass
+        
         try:
             await AdminHandler._send_broadcast_message(
                 context,
@@ -450,6 +489,25 @@ class AdminHandler:
             return
         AdminHandler.BOT_STATUS = False
         logger.info(f"البوت تم إيقافه للصيانة بواسطة الإدمن {update.effective_user.id}")
+        
+        # Update Supabase app_settings so the guard picks up the new status
+        try:
+            supa.get_client().table("app_settings").upsert(
+                {"key": "bot_status", "value": "paused"},
+                on_conflict="key"
+            ).execute()
+            logger.info("Updated bot_status to 'paused' in Supabase app_settings")
+        except Exception as e:
+            logger.error(f"Failed to update bot_status in Supabase: {e}")
+        
+        # Invalidate the bot_status cache so the guard picks up the new status immediately
+        try:
+            from handlers.bot_status import _cache
+            _cache["status"] = "paused"
+            _cache["expires"] = 0  # Force cache refresh on next check
+        except Exception:
+            pass
+        
         try:
             await AdminHandler._send_broadcast_message(
                 context,
