@@ -101,10 +101,12 @@ async def handle_ichancy(update, context):
 
 def get_ichancy_account(user_id):
     try:
-        account = supa.get_ichancy_details_by_telegram_id(user_id)
+        # Ensure consistent type - Supabase expects string telegram_id
+        account = supa.get_ichancy_details_by_telegram_id(str(user_id))
         if account and account.get("username"):
             return account
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error getting ichancy account for user {user_id}: {e}")
         pass
     return None
 
@@ -112,6 +114,9 @@ def get_ichancy_account(user_id):
 def get_ichancy_keyboard(user_id):
     account = get_ichancy_account(user_id)
     has_account = bool(account and account.get("username"))
+
+    # Ensure user_id is integer for callback data consistency
+    user_id_str = str(user_id)
 
     if has_account:
         keyboard = [
@@ -360,7 +365,7 @@ async def handle_ichancy_text(update, context):
 
             try:
                 supa.upsert_ichancy_details(
-                    telegram_id=user_id,
+                    telegram_id=str(user_id),
                     username=username,
                     email=email,
                     password=password,
@@ -373,9 +378,10 @@ async def handle_ichancy_text(update, context):
             context.user_data.pop('temp_username', None)
 
             await update.message.reply_text("✅ تم إنشاء الحساب بنجاح")
+            # Use integer user_id for consistency with get_ichancy_keyboard
             await update.message.reply_text(
                 "🎮 القائمة:",
-                reply_markup=get_ichancy_keyboard(user_id)
+                reply_markup=get_ichancy_keyboard(int(user_id))
             )
         else:
             error_msg = res.get('error', 'Unknown error') if res else 'Registration failed'
@@ -404,5 +410,5 @@ async def delete_account_handler(update: Update, context: ContextTypes.DEFAULT_T
 
     await query.message.reply_text(
         "🎮 القائمة:",
-        reply_markup=get_ichancy_keyboard(telegram_id)
+        reply_markup=get_ichancy_keyboard(int(telegram_id))
     )

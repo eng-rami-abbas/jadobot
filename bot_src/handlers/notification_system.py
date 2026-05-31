@@ -13,7 +13,7 @@ from typing import List, Dict, Any
 import Logger
 import config.telegram
 import store
-from config.telegram import Bot, Update
+from config.telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 logger = Logger.getLogger()
@@ -74,7 +74,7 @@ class NotificationSystem:
             # تأخير صغير لتجنب حظر التليجرام
             await asyncio.sleep(0.1)
         
-        logger.info(f"Bulk notification results: {results['success']}成功, {results['failed']} فشل")
+        logger.info(f"Bulk notification results: {results['success']} sent, {results['failed']} failed")
         return results
     
     async def send_transaction_notification(self, user_id: str, transaction_type: str, amount: int, status: str, transaction_id: str = None):
@@ -98,7 +98,7 @@ class NotificationSystem:
 {status_emoji} **إشعار معاملة**
 
 💰 **النوع:** {type_text}
-💵 **المبلغ:** {helpers.format_currency(amount)}
+💵 **المبلغ:** {amount}
 📊 **الحالة:** {status}
 
 {f'🆔 **رقم المعاملة:** #{transaction_id}' if transaction_id else ''}
@@ -230,6 +230,42 @@ class NotificationSystem:
                 )
             except Exception as e:
                 logger.error(f"Error processing queued notification: {e}")
+
+    # =============================
+    # CALLBACK HANDLER FOR BUTTONS
+    # =============================
+    @staticmethod
+    async def handle_notification_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """معالج أزرار الإشعارات من لوحة الإدمن"""
+        query = update.callback_query
+        data = query.data or ""
+        
+        if data == "notification_send":
+            # إرسال إشعار يدوي
+            context.user_data['admin_operation'] = 'broadcast'
+            keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data='admin_panel')]]
+            await query.edit_message_text(
+                "📢 **إرسال إشعار**\n\nأرسل الرسالة التي تريد إرسالها لجميع المستخدمين:",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        elif data == "notification_status":
+            # إرسال إشعار من حالة البوت
+            context.user_data['admin_operation'] = 'maintenance_notice'
+            keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data='admin_manage_bot_status')]]
+            await query.edit_message_text(
+                "📣 **إرسال إشعار صيانة**\n\nأرسل رسالة الصيانة التي تريد إرسالها للمستخدمين:\n(يمكنك استخدام التنسيق Markdown)",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        elif data == "notification_history":
+            # عرض سجل الإشعارات
+            await query.edit_message_text(
+                "📋 **سجل الإشعارات**\n\nلا توجد إشعارات سابقة مسجلة حالياً.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 رجوع", callback_data="admin_panel")]
+                ])
+            )
+        else:
+            await query.answer("زر إشعار غير معروف", show_alert=True)
 
 # إنشاء نسخة عالمية
 notification_system = NotificationSystem()

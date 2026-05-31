@@ -5,7 +5,7 @@ Connects to agents.ichancy.com API using Playwright browser automation
 with stealth mode to bypass Cloudflare protection.
 
 Strategy:
-  1. Launch headless Chromium with playwright-stealth
+  1. Launch headless Firefox with playwright-stealth
   2. Navigate to login page, fill credentials, submit
   3. Extract access token from localStorage
   4. Extract cookies from browser context
@@ -58,7 +58,7 @@ class iChancyAPI:
     """
     iChancy Agent API client using Playwright browser automation.
 
-    Uses a real Chromium browser with stealth mode to bypass Cloudflare,
+    Uses a real Firefox browser with stealth mode to bypass Cloudflare,
     then extracts the access token and cookies for subsequent API calls.
     """
 
@@ -131,16 +131,13 @@ class iChancyAPI:
     async def _get_headers(self, with_auth=True):
         """Return headers dict with auth token and browser-like headers."""
         h = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0',
             'Accept': 'application/json, text/plain, */*',
             'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
             'Accept-Encoding': 'gzip, deflate, br',
             'Content-Type': 'application/json',
             'Origin': self.BASE_URL,
             'Referer': self.BASE_URL + '/',
-            'Sec-Ch-Ua': '"Not A(Brand";v="99", "Google Chrome";v="125", "Chromium";v="125"',
-            'Sec-Ch-Ua-Mobile': '?0',
-            'Sec-Ch-Ua-Platform': '"Windows"',
             'Sec-Fetch-Dest': 'empty',
             'Sec-Fetch-Mode': 'cors',
             'Sec-Fetch-Site': 'same-origin',
@@ -228,7 +225,7 @@ class iChancyAPI:
     async def _browser_signin(self, username, password):
         """
         Sign in using Playwright browser automation with stealth mode.
-        This bypasses Cloudflare by using a real Chromium browser.
+        Uses Firefox browser to bypass Cloudflare protection.
         """
         if not HAS_PLAYWRIGHT:
             logger.error("Playwright not available for browser-based sign-in")
@@ -237,23 +234,19 @@ class iChancyAPI:
         browser = None
         try:
             async with async_playwright() as p:
-                # Launch headless Chromium with Railway-compatible args
-                browser = await p.chromium.launch(
+                # Launch headless Firefox with Railway-compatible args
+                browser = await p.firefox.launch(
                     headless=True,
                     args=[
                         "--no-sandbox",
                         "--disable-setuid-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--disable-gpu",
-                        "--disable-extensions",
-                        "--disable-software-rasterizer",
                     ]
                 )
 
                 # Create context with realistic viewport and user agent
                 context = await browser.new_context(
                     viewport={"width": 1920, "height": 1080},
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
                     locale="en-US",
                 )
 
@@ -262,10 +255,10 @@ class iChancyAPI:
                 # Apply stealth mode if available
                 if HAS_STEALTH:
                     await stealth_async(page)
-                    logger.info("Stealth mode applied to browser page")
+                    logger.info("Stealth mode applied to Firefox browser page")
 
                 # Navigate to login page
-                logger.info(f"Navigating to {self.BASE_URL}/login ...")
+                logger.info(f"Navigating to {self.BASE_URL}/login with Firefox ...")
                 await page.goto(f"{self.BASE_URL}/login", wait_until="networkidle", timeout=60000)
 
                 # Wait for the login form to appear
@@ -390,16 +383,15 @@ class iChancyAPI:
                 if self.access_token:
                     self.token_expires_at = datetime.now() + timedelta(hours=1)
                     self._authenticated = True
-                    logger.info("Successfully obtained access token via browser sign-in")
+                    logger.info("Successfully obtained access token via Firefox browser sign-in")
                     iChancyAPI._last_auth_time = datetime.now()
                     return True
                 else:
                     logger.error("No access token found in localStorage after login")
-                    # Take screenshot for debugging (before closing browser)
                     return False
 
         except Exception as e:
-            logger.error(f"Browser sign-in error: {e}", exc_info=True)
+            logger.error(f"Firefox browser sign-in error: {e}", exc_info=True)
             if browser:
                 try:
                     await browser.close()
@@ -449,7 +441,7 @@ class iChancyAPI:
 
         # Try browser-based sign-in (best Cloudflare bypass)
         if HAS_PLAYWRIGHT:
-            logger.info("Attempting browser-based sign-in with Playwright...")
+            logger.info("Attempting browser-based sign-in with Playwright Firefox...")
             for attempt in range(2):
                 try:
                     success = await self._browser_signin(username, password)
@@ -475,7 +467,7 @@ class iChancyAPI:
                 'Content-Type': 'application/json',
                 'Origin': self.BASE_URL,
                 'Referer': self.BASE_URL + '/',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0',
             }
 
             if HAS_HTTPX and self._http_client:

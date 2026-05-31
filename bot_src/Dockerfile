@@ -9,14 +9,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     RAILWAY_ENVIRONMENT=production
 
-# Install system dependencies required for Playwright Chromium
+# Install system dependencies required for Playwright Firefox
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     curl \
     wget \
-    libnss3 \
-    libnspr4 \
     libatk1.0-0 \
     libatk-bridge2.0-0 \
     libcups2 \
@@ -32,6 +30,8 @@ RUN apt-get update && apt-get install -y \
     libasound2 \
     libatspi2.0-0 \
     libwayland-client0 \
+    libdbus-glib-1-2 \
+    libgtk-3-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
@@ -41,8 +41,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright Chromium browser
-RUN playwright install chromium --with-deps
+# Install Playwright Firefox browser
+RUN playwright install firefox --with-deps
 
 # Copy application code
 COPY . .

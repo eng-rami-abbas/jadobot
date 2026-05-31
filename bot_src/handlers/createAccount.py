@@ -179,10 +179,11 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
 
             await update.message.reply_text(success_message, parse_mode=None)
 
+            # Show iChancy keyboard with account - use integer user_id for consistency
             from handlers.ichancy import get_ichancy_keyboard
             await update.message.reply_text(
                 "🎮 القائمة:",
-                reply_markup=get_ichancy_keyboard(telegram_user_id)
+                reply_markup=get_ichancy_keyboard(int(telegram_user_id))
             )
 
         else:
