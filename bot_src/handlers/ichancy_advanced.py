@@ -18,6 +18,28 @@ import handlers.ichancy
 
 logger = Logger.getLogger()
 
+
+def _get_account(user_id, context=None):
+    """Helper: get ichancy account from session cache or Supabase.
+    Checks context.user_data first (fast), then falls back to Supabase.
+    """
+    # 1. Check session cache first
+    if context and hasattr(context, 'user_data') and context.user_data.get('ichancy_account'):
+        account = context.user_data['ichancy_account']
+        if account and account.get('username'):
+            return account
+
+    # 2. Fallback to Supabase
+    try:
+        account = supa.get_ichancy_details_by_telegram_id(str(user_id))
+        if account and account.get('username'):
+            return account
+    except Exception as e:
+        logger.error(f"Error getting ichancy account for user {user_id}: {e}")
+
+    return None
+
+
 # =============================
 # 📊 معلومات الحساب (Account Info)
 # =============================
@@ -30,8 +52,8 @@ async def ichancy_account_info(update: Update, context: ContextTypes.DEFAULT_TYP
     user_id = str(update.effective_user.id)
     
     try:
-        # جلب بيانات الحساب من Supabase
-        account = supa.get_ichancy_details_by_telegram_id(user_id)
+        # جلب بيانات الحساب - check session cache first
+        account = _get_account(user_id, context)
         
         if not account or not account.get('username'):
             await query.edit_message_text("❌ لم يتم العثور على حساب")
@@ -91,7 +113,7 @@ async def ichancy_deposit_advanced(update: Update, context: ContextTypes.DEFAULT
     user_id = str(update.effective_user.id)
     
     try:
-        account = supa.get_ichancy_details_by_telegram_id(user_id)
+        account = _get_account(user_id, context)
         
         if not account or not account.get('username'):
             await query.edit_message_text("❌ لم يتم العثور على حساب")
@@ -140,8 +162,8 @@ async def handle_ichancy_deposit_amount(update: Update, context: ContextTypes.DE
             context.user_data.pop('ichancy_deposit', None)
             return
         
-        # جلب بيانات الحساب
-        account = supa.get_ichancy_details_by_telegram_id(user_id)
+        # جلب بيانات الحساب - check session cache first
+        account = _get_account(user_id, context)
         
         if not account or not account.get('username'):
             await update.message.reply_text("❌ لم يتم العثور على حساب")
@@ -208,7 +230,7 @@ async def ichancy_withdraw_advanced(update: Update, context: ContextTypes.DEFAUL
     user_id = str(update.effective_user.id)
     
     try:
-        account = supa.get_ichancy_details_by_telegram_id(user_id)
+        account = _get_account(user_id, context)
         
         if not account or not account.get('username'):
             await query.edit_message_text("❌ لم يتم العثور على حساب")
@@ -252,8 +274,8 @@ async def handle_ichancy_withdraw_amount(update: Update, context: ContextTypes.D
             await update.message.reply_text("❌ المبلغ يجب أن يكون أكبر من 0")
             return
         
-        # جلب بيانات الحساب
-        account = supa.get_ichancy_details_by_telegram_id(user_id)
+        # جلب بيانات الحساب - check session cache first
+        account = _get_account(user_id, context)
         
         if not account or not account.get('username'):
             await update.message.reply_text("❌ لم يتم العثور على حساب")
@@ -407,8 +429,8 @@ async def ichancy_deposit_all_advanced(update: Update, context: ContextTypes.DEF
     user_id = str(update.effective_user.id)
     
     try:
-        # جلب بيانات الحساب
-        account = supa.get_ichancy_details_by_telegram_id(user_id)
+        # جلب بيانات الحساب - check session cache first
+        account = _get_account(user_id, context)
         
         if not account or not account.get('username'):
             await query.edit_message_text("❌ لم يتم العثور على حساب")

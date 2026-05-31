@@ -87,14 +87,14 @@ async def handle_ichancy(update, context):
     try:
         await query.edit_message_text(
             "🎮 **نظام iChancy**\n\nاختر العملية:",
-            reply_markup=get_ichancy_keyboard(user_id),
+            reply_markup=get_ichancy_keyboard(user_id, context=context),
             parse_mode="Markdown"
         )
     except Exception as e:
         logger.error(f"Error in handle_ichancy: {e}")
         await query.message.reply_text(
             "🎮 **نظام iChancy**\n\nاختر العملية:",
-            reply_markup=get_ichancy_keyboard(user_id),
+            reply_markup=get_ichancy_keyboard(user_id, context=context),
             parse_mode="Markdown"
         )
 
@@ -111,8 +111,24 @@ def get_ichancy_account(user_id):
     return None
 
 
-def get_ichancy_keyboard(user_id):
-    account = get_ichancy_account(user_id)
+def get_ichancy_keyboard(user_id, context=None):
+    """Get the iChancy keyboard based on whether user has an account.
+    
+    Checks in order:
+    1. context.user_data['ichancy_account'] (session cache - immediate)
+    2. Supabase database (persistent storage)
+    """
+    account = None
+    
+    # 1. Check session cache first (fastest, works even if Supabase table missing)
+    if context and hasattr(context, 'user_data') and context.user_data.get('ichancy_account'):
+        account = context.user_data['ichancy_account']
+        logger.info(f"Found ichancy account in session cache for user {user_id}")
+    
+    # 2. Fallback to Supabase lookup
+    if not account or not account.get('username'):
+        account = get_ichancy_account(user_id)
+    
     has_account = bool(account and account.get("username"))
 
     if has_account:
@@ -139,7 +155,13 @@ async def ichancy_balance(update, context):
     await query.answer()
 
     user_id = str(update.effective_user.id)
-    account = get_ichancy_account(user_id)
+    
+    # Check session cache first, then Supabase
+    account = None
+    if context and hasattr(context, 'user_data') and context.user_data.get('ichancy_account'):
+        account = context.user_data['ichancy_account']
+    if not account or not account.get('username'):
+        account = get_ichancy_account(user_id)
 
     if not account or not account.get("username"):
         await query.edit_message_text("❌ يجب أن تنشئ حساب أولا")
@@ -161,14 +183,14 @@ async def ichancy_balance(update, context):
         await query.edit_message_text(
             f"📊 **رصيدك الحالي:**\n\n💰 {balance}",
             parse_mode="Markdown",
-            reply_markup=get_ichancy_keyboard(user_id)
+            reply_markup=get_ichancy_keyboard(user_id, context=context)
         )
     except Exception as e:
         logger.error(f"Error in ichancy_balance: {e}")
         await query.message.reply_text(
             f"📊 **رصيدك الحالي:**\n\n💰 {balance}",
             parse_mode="Markdown",
-            reply_markup=get_ichancy_keyboard(user_id)
+            reply_markup=get_ichancy_keyboard(user_id, context=context)
         )
 
 async def delete_account_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -176,16 +198,38 @@ async def delete_account_handler(update: Update, context: ContextTypes.DEFAULT_T
     await query.answer()
 
     telegram_id = str(query.from_user.id)
-    account = get_ichancy_account(telegram_id)
+    
+    # Check session cache first, then Supabase
+    account = None
+    if context and hasattr(context, 'user_data') and context.user_data.get('ichancy_account'):
+        account = context.user_data['ichancy_account']
+    if not account or not account.get('username'):
+        account = get_ichancy_account(telegram_id)
 
     if not account or not account.get("username"):
         await query.answer("❌ لا يوجد حساب", show_alert=True)
         return
 
+    # Delete from Supabase
     try:
         supa.get_client().table("users_ichancy_details").delete().eq("telegram_id", telegram_id).execute()
     except Exception as e:
-        logger.warning(f"Could not delete ichancy details from Supabase: {e}")
+        logger.warning(f"Could not delete ichancy details from users_ichancy_details: {e}")
+    
+    # Also try deleting from users table (fallback storage)
+    try:
+        supa.get_client().table("users").update({
+            "ichancy_username": None,
+            "ichancy_email": None,
+            "ichancy_password": None,
+            "ichancy_player_id": None,
+        }).eq("telegram_id", telegram_id).execute()
+    except Exception as e:
+        logger.warning(f"Could not clear ichancy details from users table: {e}")
+
+    # Clear session cache
+    if context and hasattr(context, 'user_data'):
+        context.user_data.pop('ichancy_account', None)
 
     try:
         await query.edit_message_text("✅ تم حذف الحساب بنجاح")
@@ -194,5 +238,5 @@ async def delete_account_handler(update: Update, context: ContextTypes.DEFAULT_T
 
     await query.message.reply_text(
         "🎮 القائمة:",
-        reply_markup=get_ichancy_keyboard(int(telegram_id))
+        reply_markup=get_ichancy_keyboard(int(telegram_id), context=context)
     )

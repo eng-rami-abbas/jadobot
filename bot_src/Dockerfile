@@ -44,9 +44,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright Firefox browser AS the app user so it's in the right cache
+# Install Playwright Firefox browser with system dependencies AS the app user
 USER app
-RUN playwright install firefox
+RUN playwright install firefox --with-deps
 USER root
 
 # Copy application code

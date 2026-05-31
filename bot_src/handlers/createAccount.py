@@ -27,7 +27,19 @@ def get_api():
 
 async def button_create_account_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.callback_query.from_user.id
-    account = supa.get_ichancy_details_by_telegram_id(telegram_id)
+    
+    # Check session cache first (if account was just created in this session)
+    cached_account = context.user_data.get('ichancy_account') if hasattr(context, 'user_data') else None
+    
+    # Then check Supabase
+    account = None
+    if cached_account and cached_account.get('username'):
+        account = cached_account
+    else:
+        try:
+            account = supa.get_ichancy_details_by_telegram_id(telegram_id)
+        except Exception:
+            pass
 
     if account and account.get('username'):
         await update.callback_query.answer("لديك حساب مسجل مسبقا", show_alert=True)
@@ -192,6 +204,20 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
             except Exception as e:
                 logger.error(f"Could not verify ichancy details save: {e}")
 
+        # =====================================================
+        # STORE ACCOUNT IN SESSION CACHE (context.user_data)
+        # This ensures the correct keyboard appears IMMEDIATELY
+        # even if Supabase table is missing
+        # =====================================================
+        context.user_data['ichancy_account'] = {
+            'telegram_id': telegram_user_id,
+            'username': name,
+            'email': email,
+            'password': password,
+            'player_id': str(player_id) if player_id else "0",
+        }
+        logger.info(f"Cached ichancy account in session for user {telegram_user_id}")
+
         # MESSAGE SUCCESS
         success_message = (
             f"✅ تم إنشاء الحساب بنجاح!\n\n"
@@ -206,10 +232,11 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(success_message, parse_mode='HTML')
 
         # Show iChancy keyboard with account buttons (charge, withdraw, etc.)
+        # Pass context so it can use the session cache
         from handlers.ichancy import get_ichancy_keyboard
         await update.message.reply_text(
             "🎮 القائمة:",
-            reply_markup=get_ichancy_keyboard(int(telegram_user_id))
+            reply_markup=get_ichancy_keyboard(int(telegram_user_id), context=context)
         )
 
     else:
