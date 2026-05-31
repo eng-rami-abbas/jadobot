@@ -914,24 +914,34 @@ class AdminHandler:
     
     @staticmethod
     async def _send_broadcast_message(context: ContextTypes.DEFAULT_TYPE, message: str):
+        import asyncio
         try:
             users = store.get_all_users()
             if not users:
                 logger.warning("لا يوجد مستخدمين لإرسال الرسالة لهم")
                 return 0
             successful_sends = 0
+            failed_sends = 0
             logger.info(f"إرسال إشعار لـ {len(users)} مستخدم")
             for user in users:
                 try:
                     telegram_id = user.get('telegram_id')
                     if telegram_id:
-                        await context.bot.send_message(chat_id=int(telegram_id), text=message, parse_mode='Markdown')
+                        try:
+                            await context.bot.send_message(chat_id=int(telegram_id), text=message, parse_mode='Markdown')
+                        except Exception as md_err:
+                            # Markdown parse failed - retry without parse_mode
+                            logger.debug(f"Markdown failed for {telegram_id}, retrying without parse_mode: {md_err}")
+                            try:
+                                await context.bot.send_message(chat_id=int(telegram_id), text=message)
+                            except Exception:
+                                pass
                         successful_sends += 1
-                        import asyncio
                         await asyncio.sleep(0.1)
                 except Exception as e:
+                    failed_sends += 1
                     logger.warning(f"لا يمكن إرسال إشعار للمستخدم {user.get('telegram_id')}: {e}")
-            logger.info(f"تم إرسال الإشعار لـ {successful_sends} من {len(users)} مستخدم")
+            logger.info(f"تم إرسال الإشعار لـ {successful_sends} من {len(users)} مستخدم ({failed_sends} فشل)")
             return successful_sends
         except Exception as e:
             logger.error(f"Error in broadcast message: {e}")
@@ -1018,6 +1028,7 @@ class AdminHandler:
     
     @staticmethod
     async def _handle_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
+        import asyncio
         try:
             users = store.get_all_users()
             if not users:
@@ -1028,13 +1039,20 @@ class AdminHandler:
             successful_sends = 0
             failed_sends = 0
             await update.message.reply_text(f"📤 جاري إرسال الرسالة إلى {user_count} مستخدم...")
+            broadcast_text = f"📢 رسالة من الإدارة:\n\n{text}"
             for user in users:
                 try:
                     telegram_id = user.get('telegram_id')
                     if telegram_id:
-                        await context.bot.send_message(chat_id=int(telegram_id), text=f"📢 **رسالة من الإدارة:**\n\n{text}")
+                        try:
+                            await context.bot.send_message(chat_id=int(telegram_id), text=broadcast_text, parse_mode='Markdown')
+                        except Exception:
+                            # Markdown parse failed - retry without parse_mode
+                            try:
+                                await context.bot.send_message(chat_id=int(telegram_id), text=broadcast_text)
+                            except Exception:
+                                pass
                         successful_sends += 1
-                        import asyncio
                         await asyncio.sleep(0.1)
                 except Exception as e:
                     failed_sends += 1

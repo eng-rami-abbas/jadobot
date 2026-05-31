@@ -16,6 +16,7 @@ pytz
 beautifulsoup4==4.13.4
 cloudscraper==1.2.71
 curl_cffi==0.7.3
+httpx>=0.27.0
 
 # Data Processing (updated versions)
 numpy==1.26.4

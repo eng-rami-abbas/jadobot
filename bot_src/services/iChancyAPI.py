@@ -3,10 +3,12 @@ iChancy Agent API Client
 ========================
 Connects to agents.ichancy.com API with Cloudflare bypass.
 Uses multiple strategies with session recycling:
+  0. FlareSolverr proxy (real browser, best Cloudflare bypass)
   1. curl_cffi (best TLS fingerprint impersonation)
   2. cloudscraper (Cloudflare challenge solver)
   3. requests with browser headers
   4. raw requests with minimal headers (last resort)
+  5. Manual token injection (ICHANCY_ACCESS_TOKEN env var)
 
 On 403: destroys the entire session, rebuilds with the next
 available strategy, and retries.
@@ -40,6 +42,13 @@ try:
 except ImportError:
     HAS_CURL_CFFI = False
 
+# FlareSolverr support
+try:
+    import httpx
+    HAS_HTTPX = True
+except ImportError:
+    HAS_HTTPX = False
+
 # ---------------------------------------------------------------------------
 # Browser-impersonation profiles we cycle through when a 403 forces a rebuild.
 # Newer Chrome versions first, then Firefox as a fallback.
@@ -65,6 +74,9 @@ _CLOUDSCRAPER_BROWSERS = [
     {"browser": "chrome", "platform": "darwin", "mobile": False},
     {"browser": "firefox", "platform": "windows", "mobile": False},
 ]
+
+# FlareSolverr URL (can be set via FLARESOLVERR_URL env var)
+FLARESOLVERR_URL = os.getenv('FLARESOLVERR_URL', 'http://localhost:8191/v1')
 
 
 def _is_cloudflare_block(response):
@@ -123,16 +135,136 @@ def _is_cloudflare_block(response):
     return False
 
 
+class FlareSolverrClient:
+    """Client for FlareSolverr proxy to bypass Cloudflare challenges."""
+
+    def __init__(self, url=None):
+        self.url = url or FLARESOLVERR_URL
+        self.session = None
+        try:
+            if HAS_HTTPX:
+                self.session = httpx.Client(timeout=120)
+            else:
+                self.session = raw_requests.Session()
+        except Exception:
+            self.session = raw_requests.Session()
+
+    def _request(self, method, endpoint, payload):
+        """Make a request to FlareSolverr."""
+        url = f"{self.url}/{endpoint}"
+        try:
+            if HAS_HTTPX and isinstance(self.session, httpx.Client):
+                resp = self.session.request(method, url, json=payload)
+                return resp.json()
+            else:
+                resp = self.session.request(method, url, json=payload, timeout=120)
+                return resp.json()
+        except Exception as e:
+            logger.error(f"FlareSolverr request failed: {e}")
+            return None
+
+    def create_session(self):
+        """Create a new browser session in FlareSolverr."""
+        payload = {
+            "cmd": "sessions.create",
+        }
+        result = self._request("POST", "", payload)
+        if result and result.get('status') == 'ok':
+            session_id = result.get('session')
+            logger.info(f"FlareSolverr session created: {session_id}")
+            return session_id
+        return None
+
+    def destroy_session(self, session_id):
+        """Destroy a browser session in FlareSolverr."""
+        payload = {
+            "cmd": "sessions.destroy",
+            "session": session_id,
+        }
+        self._request("POST", "", payload)
+
+    def post_request(self, url, payload, session_id=None):
+        """Send a POST request through FlareSolverr."""
+        fs_payload = {
+            "cmd": "request.post",
+            "url": url,
+            "postData": json.dumps(payload),
+            "headers": {"Content-Type": "application/json"},
+            "maxTimeout": 60000,
+        }
+        if session_id:
+            fs_payload["session"] = session_id
+
+        result = self._request("POST", "", fs_payload)
+        if result and result.get('status') == 'ok':
+            solution = result.get('solution', {})
+            response_data = {
+                'status_code': solution.get('status', 0),
+                'text': solution.get('response', ''),
+                'headers': solution.get('headers', {}),
+                'cookies': solution.get('cookies', []),
+            }
+            return response_data
+        return None
+
+    def get_request(self, url, session_id=None):
+        """Send a GET request through FlareSolverr."""
+        fs_payload = {
+            "cmd": "request.get",
+            "url": url,
+            "maxTimeout": 60000,
+        }
+        if session_id:
+            fs_payload["session"] = session_id
+
+        result = self._request("POST", "", fs_payload)
+        if result and result.get('status') == 'ok':
+            solution = result.get('solution', {})
+            response_data = {
+                'status_code': solution.get('status', 0),
+                'text': solution.get('response', ''),
+                'headers': solution.get('headers', {}),
+                'cookies': solution.get('cookies', []),
+            }
+            return response_data
+        return None
+
+    def is_available(self):
+        """Check if FlareSolverr is running and accessible."""
+        try:
+            if HAS_HTTPX and isinstance(self.session, httpx.Client):
+                resp = self.session.get(f"{self.url}/health", timeout=5)
+            else:
+                resp = self.session.get(f"{self.url}/health", timeout=5)
+            return resp.status_code == 200
+        except Exception:
+            return False
+
+
+class FlareSolverrResponse:
+    """Wrapper to make FlareSolverr responses compatible with the existing code."""
+
+    def __init__(self, data):
+        self._data = data or {}
+        self.status_code = self._data.get('status_code', 0)
+        self.text = self._data.get('text', '')
+        self.headers = self._data.get('headers', {})
+
+    def json(self):
+        return json.loads(self.text)
+
+
 class iChancyAPI:
     """
     iChancy Agent API client with robust Cloudflare bypass.
 
     Strategy priority:
+      0. FlareSolverr proxy – real browser (best Cloudflare bypass)
       1. curl_cffi  – full TLS fingerprint impersonation
       2. cloudscraper – JS challenge solver
       3. requests + browser headers
-      4. raw requests + minimal headers (sometimes over-engineered
-         headers themselves trigger CF)
+      4. raw requests + minimal headers
+      5. Manual token (ICHANCY_ACCESS_TOKEN env var)
 
     On every 403 the session is completely torn down and rebuilt
     with the next available strategy.  Cookies from a successful
@@ -152,6 +284,9 @@ class iChancyAPI:
     # survive session rebuilds)
     _persisted_cookies = None
 
+    # Persisted FlareSolverr session ID
+    _fs_session_id = None
+
     @classmethod
     def get_shared(cls):
         """Get or create a shared API instance to avoid re-authentication overhead."""
@@ -165,6 +300,12 @@ class iChancyAPI:
                 cls._shared_instance = None
         return cls._shared_instance
 
+    @classmethod
+    def reset_shared(cls):
+        """Reset the shared instance to force re-authentication."""
+        cls._shared_instance = None
+        cls._last_auth_time = None
+
     def __init__(self):
         self.session = None
         self.access_token = None
@@ -172,15 +313,24 @@ class iChancyAPI:
         self.token_expires_at = None
         self.agent_id = None
         self._session_type = None
-        self._strategy_index = 0        # which strategy we're on
+        self._strategy_index = -1       # which strategy we're on (-1 = not set)
         self._curl_profile_index = 0    # which curl_cffi profile
         self._cs_browser_index = 0      # which cloudscraper browser config
+        self._fs_client = None          # FlareSolverr client
+
+        # Check for manual token first
+        manual_token = os.getenv('ICHANCY_ACCESS_TOKEN', '').strip()
+        if manual_token:
+            self.access_token = manual_token
+            self.token_expires_at = datetime.now() + timedelta(hours=1)
+            logger.info("Using manually provided ICHANCY_ACCESS_TOKEN")
 
         # Setup session with best available strategy
         self._init_session()
 
-        # Auto login
-        self._ensure_authenticated()
+        # Auto login (only if no manual token)
+        if not self.access_token:
+            self._ensure_authenticated()
 
     # ------------------------------------------------------------------
     # SESSION MANAGEMENT
@@ -189,6 +339,7 @@ class iChancyAPI:
         """Initialize HTTP session with best available strategy.
 
         Strategies (in order):
+          -1 – FlareSolverr (real browser proxy)
           0 – curl_cffi
           1 – cloudscraper
           2 – requests + browser headers
@@ -196,8 +347,22 @@ class iChancyAPI:
         """
         self._destroy_session()
 
+        # Strategy -1: FlareSolverr (best Cloudflare bypass - uses real browser)
+        if self._strategy_index <= -1:
+            try:
+                fs_client = FlareSolverrClient()
+                if fs_client.is_available():
+                    self._fs_client = fs_client
+                    self._session_type = "flaresolverr"
+                    logger.info("Using FlareSolverr session (real browser proxy)")
+                    return
+                else:
+                    logger.info("FlareSolverr not available, trying next strategy")
+            except Exception as e:
+                logger.warning(f"FlareSolverr init failed: {e}")
+
         # Strategy 0: curl_cffi (best Cloudflare bypass via TLS fingerprint)
-        if self._strategy_index == 0 and HAS_CURL_CFFI:
+        if self._strategy_index <= 0 and HAS_CURL_CFFI:
             try:
                 profile = _CURL_IMPERSONATE_PROFILES[
                     self._curl_profile_index % len(_CURL_IMPERSONATE_PROFILES)
@@ -209,7 +374,6 @@ class iChancyAPI:
                 return
             except Exception as e:
                 logger.warning(f"curl_cffi init failed: {e}")
-                self._strategy_index += 1  # fall through to next
 
         # Strategy 1: cloudscraper
         if self._strategy_index <= 1 and HAS_CLOUDSCRAPER:
@@ -224,7 +388,6 @@ class iChancyAPI:
                 return
             except Exception as e:
                 logger.warning(f"cloudscraper init failed: {e}")
-                self._strategy_index += 1
 
         # Strategy 2: plain requests with browser headers
         if self._strategy_index <= 2 and HAS_REQUESTS:
@@ -252,13 +415,18 @@ class iChancyAPI:
             except Exception:
                 pass
             self.session = None
+        # Don't destroy FlareSolverr session here - it's managed separately
         self._session_type = None
 
     def _rebuild_session(self):
         """Destroy session, advance to next strategy/profile, and rebuild."""
         self._destroy_session()
 
-        if self._session_type == "curl_cffi" or self._strategy_index == 0:
+        if self._session_type == "flaresolverr" or self._strategy_index <= -1:
+            # FlareSolverr failed, try curl_cffi
+            self._strategy_index = 0
+            logger.info("FlareSolverr failed, trying curl_cffi")
+        elif self._session_type == "curl_cffi" or self._strategy_index == 0:
             # Try next curl profile first
             self._curl_profile_index += 1
             if self._curl_profile_index < len(_CURL_IMPERSONATE_PROFILES):
@@ -314,16 +482,8 @@ class iChancyAPI:
     # HEADERS
     # ------------------------------------------------------------------
     def _get_headers(self, with_auth=False):
-        """Return a headers dict appropriate for the current session type.
-
-        - For ``raw_requests`` we send *minimal* headers because
-          over-engineered headers can themselves trigger Cloudflare.
-        - For ``curl_cffi`` we let the impersonation engine set most
-          headers automatically and only add what the API requires.
-        - For other session types we send full browser-like headers.
-        """
+        """Return a headers dict appropriate for the current session type."""
         if self._session_type == "raw_requests":
-            # Minimal headers – sometimes less is more with CF
             h = {
                 'Content-Type': 'application/json',
                 'Origin': self.BASE_URL,
@@ -334,8 +494,6 @@ class iChancyAPI:
             return h
 
         if self._session_type == "curl_cffi":
-            # curl_cffi handles UA, Accept-Encoding, sec-ch-ua etc. via
-            # impersonation.  We only add what the iChancy API expects.
             h = {
                 'Accept': 'application/json, text/plain, */*',
                 'Content-Type': 'application/json',
@@ -375,10 +533,18 @@ class iChancyAPI:
     # ------------------------------------------------------------------
     def _post(self, url, payload, timeout=30):
         """Make a POST request with the current session."""
+        # FlareSolverr path
+        if self._session_type == "flaresolverr" and self._fs_client:
+            result = self._fs_client.post_request(url, payload, iChancyAPI._fs_session_id)
+            if result:
+                return FlareSolverrResponse(result)
+            # FlareSolverr failed, fall through
+            logger.warning("FlareSolverr POST failed, result was None")
+            return FlareSolverrResponse({'status_code': 0, 'text': '', 'headers': {}})
+
+        # Standard HTTP library path
         with_auth = bool(self.access_token)
         headers = self._get_headers(with_auth=with_auth)
-
-        logger.debug(f"POST {url} (session type: {self._session_type})")
 
         if self._session_type == "curl_cffi":
             return self.session.post(url, json=payload, headers=headers, timeout=timeout)
@@ -387,6 +553,14 @@ class iChancyAPI:
 
     def _get(self, url, timeout=30):
         """Make a GET request with the current session."""
+        # FlareSolverr path
+        if self._session_type == "flaresolverr" and self._fs_client:
+            result = self._fs_client.get_request(url, iChancyAPI._fs_session_id)
+            if result:
+                return FlareSolverrResponse(result)
+            return FlareSolverrResponse({'status_code': 0, 'text': '', 'headers': {}})
+
+        # Standard HTTP library path
         with_auth = bool(self.access_token)
         headers = self._get_headers(with_auth=with_auth)
 
@@ -412,8 +586,6 @@ class iChancyAPI:
             # Non-Cloudflare 403 – could be API-level permission issue
             text = getattr(response, 'text', '')[:300]
             logger.warning(f"403 Forbidden (not Cloudflare) during {context}: {text}")
-            # Still try a session rebuild – sometimes stale cookies cause this
-            # but also try clearing auth state
             self.access_token = None
             self.refresh_token = None
             self.token_expires_at = None
@@ -421,10 +593,9 @@ class iChancyAPI:
         # Check if we still have strategies to try
         max_strategy = 3  # raw_requests is the last
         if self._strategy_index >= max_strategy and self._session_type == "raw_requests":
-            # Already on last strategy and still failing
-            logger.error("All session strategies exhausted – cannot bypass 403")
+            logger.error("All session strategies exhausted - cannot bypass 403")
             # Reset strategy index so the next attempt starts fresh
-            self._strategy_index = 0
+            self._strategy_index = -1  # Start from FlareSolverr again
             self._curl_profile_index = 0
             self._cs_browser_index = 0
             return False
@@ -497,7 +668,7 @@ class iChancyAPI:
             "password": password
         }
 
-        max_retries = 6  # More retries to cycle through strategies
+        max_retries = 4  # Reduced retries since each 403 wastes time
         for attempt in range(max_retries):
             try:
                 logger.info(f"Sign-in attempt {attempt + 1}/{max_retries} (strategy: {self._session_type})...")
@@ -505,9 +676,9 @@ class iChancyAPI:
                 # Small random jitter to avoid looking robotic
                 if attempt > 0:
                     jitter = random.uniform(1.0, 3.0)
-                    time.sleep(2 * attempt + jitter)
+                    time.sleep(jitter)
 
-                response = self._post(url, payload, timeout=45)
+                response = self._post(url, payload, timeout=60)
                 status = getattr(response, 'status_code', 0)
 
                 logger.info(f"Sign-in response status: {status} (strategy: {self._session_type})")
@@ -534,13 +705,13 @@ class iChancyAPI:
                         continue
                     return False
 
-                # ---- API-level auth failure (docs say 201 = unauthorized) ----
+                # ---- API-level auth failure ----
                 if status == 201:
-                    logger.error("Sign-in failed: API returned 201 (unauthorized) – check credentials")
+                    logger.error("Sign-in failed: API returned 201 (unauthorized) - check credentials")
                     return False
 
                 if status == 401:
-                    logger.error("Sign-in failed: 401 Unauthorized – check credentials")
+                    logger.error("Sign-in failed: 401 Unauthorized - check credentials")
                     return False
 
                 if status != 200:
@@ -548,7 +719,6 @@ class iChancyAPI:
                     resp_text = getattr(response, 'text', '')[:500]
                     logger.error(f"Response: {resp_text}")
                     if attempt < max_retries - 1:
-                        # Rebuild session on any unexpected error
                         self._rebuild_session()
                         continue
                     return False
@@ -595,6 +765,7 @@ class iChancyAPI:
                 iChancyAPI._last_auth_time = datetime.now()
 
                 # Reset strategy indices so the next auth cycle starts fresh
+                self._strategy_index = -1
                 self._curl_profile_index = 0
                 self._cs_browser_index = 0
 
@@ -623,7 +794,6 @@ class iChancyAPI:
             if status == 403:
                 can_retry = self._handle_403(response, context="token-refresh")
                 if can_retry:
-                    # Retry the refresh with new session
                     try:
                         response = self._post(url, payload, timeout=30)
                         status = getattr(response, 'status_code', 0)
@@ -672,7 +842,6 @@ class iChancyAPI:
 
             if not parent_id:
                 parent_id = os.getenv('ICHANCY_PARENT_ID', '2613607')
-                # Also check PARENT_ID env var
                 if not parent_id or parent_id == '2613607':
                     parent_id = os.getenv('PARENT_ID', parent_id)
 
@@ -695,7 +864,6 @@ class iChancyAPI:
             logger.info(f"Register response status: {status}")
 
             if status == 403:
-                # Try one rebuild + retry before giving up
                 can_retry = self._handle_403(response, context="register_player")
                 if can_retry and self._ensure_authenticated():
                     response = self._post(url, payload, timeout=30)
@@ -703,7 +871,6 @@ class iChancyAPI:
                     logger.info(f"Register retry status: {status}")
 
                 if status == 403:
-                    text = getattr(response, 'text', '')
                     if _is_cloudflare_block(response):
                         return {'success': False, 'error': 'Cloudflare يحظر الاتصال - يرجى المحاولة لاحقاً'}
                     return {'success': False, 'error': 'فشل في التسجيل - خطأ 403'}
@@ -910,7 +1077,7 @@ class iChancyAPI:
         try:
             url = f"{self.API_BASE}/UserApi/withdrawFromPlayer"
             payload = {
-                "amount": -float(amount),  # Negative for withdrawal
+                "amount": -float(amount),
                 "comment": comment,
                 "playerId": player_id,
                 "currencyCode": currency,
@@ -1029,30 +1196,3 @@ class iChancyAPI:
         if player_id:
             return self.withdraw_from_player(player_id, amount, comment)
         return {'success': False, 'error': 'Player not found'}
-
-
-# =============================
-# LEGACY COMPATIBILITY
-# =============================
-class iChancyAPI_Legacy(iChancyAPI):
-    """Legacy compatibility wrapper."""
-
-    def register_account(self, username, password, email, parent_id="2613607"):
-        result = self.register_player(username, password, email, parent_id)
-        if result['success']:
-            return {'success': True, 'data': result['data']}
-        return result
-
-    def getPlayerId(self, username):
-        return self.get_player_id_by_username(username)
-
-    def getPlayerIdFast(self, username):
-        return self.get_player_id_by_username(username)
-
-    def transferMoney(self, player_id, amount, currency="NSP"):
-        result = self.deposit_to_player(player_id, amount, "Bot transfer", currency)
-        return result['success']
-
-    def withdrawMoney(self, player_id, amount, currency="NSP"):
-        result = self.withdraw_from_player(player_id, amount, "Bot withdrawal", currency)
-        return result['success']
