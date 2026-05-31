@@ -11,6 +11,7 @@ load_dotenv()
 logger = Logger.getLogger()
 
 PARENT_ID = os.getenv('PARENT_ID', '2730826')
+USERNAME_SUFFIX = '_jado2026'
 EXCHANGE_RATE = 50000
 
 API_TIMEOUT = 15
@@ -314,9 +315,19 @@ async def handle_ichancy_text(update, context):
     state = context.user_data.get('ichancy_state')
 
     if state == "ichancy_wait_username":
-        context.user_data['temp_username'] = text
+        # تنظيف الاسم وإضافة اللاحقة _jado2026
+        base_name_clean = ''.join(c if c.isalnum() else '' for c in text.strip().lower())
+        if not base_name_clean or len(base_name_clean) < 3:
+            await update.message.reply_text("❌ الاسم يجب أن يحتوي على 3 أحرف على الأقل")
+            return
+        full_username = base_name_clean + USERNAME_SUFFIX
+        context.user_data['temp_username'] = full_username
         context.user_data['ichancy_state'] = "ichancy_wait_password"
-        await update.message.reply_text("🔑 الآن أدخل كلمة مرور (8 أحرف على الأقل):")
+        await update.message.reply_text(
+            f"✅ اسم المستخدم الخاص بك سيكون: <code>{full_username}</code>\n\n"
+            f"🔑 الآن أدخل كلمة مرور (8 أحرف على الأقل):",
+            parse_mode='HTML'
+        )
         return
 
     if state == "ichancy_wait_password":

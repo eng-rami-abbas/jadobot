@@ -265,6 +265,12 @@ def main() -> None:
         # معالج إدخال المبالغ المتقدم لـ iChancy + معالج إنشاء الحساب من ichancy.py
         async def handle_text_routing(update, context):
             """توجيه الرسائل النصية حسب الحالة"""
+            # التحقق من عمليات الإدمن أولاً
+            admin_op = context.user_data.get('admin_operation')
+            if admin_op:
+                await handlers.admin_handler.AdminHandler.handle_admin_input(update, context)
+                return
+
             # التحقق من حالة إنشاء حساب ichancy
             ichancy_state = context.user_data.get('ichancy_state')
             if ichancy_state:

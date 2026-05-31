@@ -37,15 +37,30 @@ async def button_create_account_handler(update: Update, context: ContextTypes.DE
     return NAME
 
 
-async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    name = update.message.text
+USERNAME_SUFFIX = '_jado2026'
 
-    if len(name) < 4:
-        await update.message.reply_text("الاسم يجب أن يكون على الأقل 4 أحرف")
+async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    name = update.message.text.strip()
+
+    if len(name) < 3:
+        await update.message.reply_text("الاسم يجب أن يكون على الأقل 3 أحرف")
         return NAME
 
-    context.user_data['name'] = name
-    await update.message.reply_text("ادخل كلمة سر للحساب الجديد (8 أحرف على الأقل)")
+    # تنظيف الاسم وإضافة اللاحقة
+    base_name_clean = ''.join(c if c.isalnum() else '' for c in name.lower())
+    if not base_name_clean:
+        await update.message.reply_text("الاسم يجب أن يحتوي على أحرف أو أرقام صالحة")
+        return NAME
+
+    # إضافة اللاحقة _jado2026 لاسم المستخدم
+    full_username = base_name_clean + USERNAME_SUFFIX
+    context.user_data['name'] = full_username
+    context.user_data['display_name'] = name  # الاسم الأصلي للعرض
+    await update.message.reply_text(
+        f"✅ اسم المستخدم الخاص بك سيكون: <code>{full_username}</code>\n\n"
+        f"ادخل كلمة سر للحساب الجديد (8 أحرف على الأقل)",
+        parse_mode='HTML'
+    )
     return PASSWORD
 
 
@@ -82,7 +97,8 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
         password = context.user_data.get('password')
         email = context.user_data.get('email')
 
-        logger.info(f"Creating account for user {telegram_user_id}: {name}")
+        display_name = context.user_data.get('display_name', name)
+        logger.info(f"Creating account for user {telegram_user_id}: {name} (display: {display_name})")
 
         # Use shared API instance
         api = get_api()
@@ -157,7 +173,8 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
                 f"🔒 كلمة السر: {password}\n"
                 f"📧 الإيميل: {email}\n"
                 f"🆔 رقم اللاعب: {player_id if player_id else 'قيد المعالجة'}\n\n"
-                f"رابط الدخول: https://www.ichancy.com/ar"
+                f"🔗 رابط الدخول: https://www.ichancy.com/ar\n\n"
+                f"⚠️ احفظ بيانات حسابك في مكان آمن!"
             )
 
             await update.message.reply_text(success_message, parse_mode=None)
