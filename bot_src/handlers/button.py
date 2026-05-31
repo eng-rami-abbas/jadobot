@@ -187,7 +187,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                   'faq_menu', 'tech_support', 'direct_contact', 'problem_solved',
                   'send_to_admin') or \
          data.startswith('faq_') or data.startswith('support_'):
-        await handlers.support_system.SupportSystem.handle_support_callback(update, context, data)
+        await handlers.support_system.SupportSystem.handle_support_callback(update, context)
         return
 
     # ========================================
@@ -288,13 +288,13 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # سحب / إيداع قديم
     # ========================================
     elif data == 'withdrawal_old':
-        await query.answer()
-        await handlers.withdrawal.handle_withdrawal(query, str(user_id))
+        # لا نستخدم هذه الأزرار القديمة - توجيه للسحب الجديد
+        await handlers.withdrawal_conversation.handle_withdrawal(update, context)
         return
 
     elif data == 'deposit_old':
-        await query.answer()
-        await handlers.deposit.handle_deposit(query, str(user_id))
+        # لا نستخدم هذه الأزرار القديمة - توجيه للإيداع الجديد
+        await handlers.deposit.handle_deposit(update, context)
         return
 
     # ========================================

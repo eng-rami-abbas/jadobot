@@ -30,7 +30,8 @@ def conversationHandler():
             MESSAGE :[MessageHandler(filters.TEXT & ~filters.COMMAND, get_message)]
         },
         fallbacks=[CommandHandler('cancel', cancel)],
-        per_message=True,
+        per_message=False,
+        per_chat=True,
         per_user=True,
         allow_reentry=True,
     )

@@ -519,7 +519,8 @@ https://www.facebook.com/ichancy.co
                 SUPPORT_MESSAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, SupportSystem.handle_support_message)]
             },
             fallbacks=[CommandHandler('cancel', SupportSystem.cancel_support)],
-            per_message=True,
+            per_message=False,
+            per_chat=True,
             per_user=True,
             allow_reentry=True,
         )

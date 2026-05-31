@@ -309,6 +309,7 @@ def conversationHandler():
         fallbacks=[CommandHandler('cancel', cancel)],
         per_user=True,
         allow_reentry=True,
-        per_message=True,
+        per_message=False,
+        per_chat=True,
     )
     return conv_handler

@@ -421,5 +421,6 @@ def conversationHandler():
 
         allow_reentry=True,
         per_user=True,
-        per_message=True,
+        per_chat=True,
+        per_message=False,
     )

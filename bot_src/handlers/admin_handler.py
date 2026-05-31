@@ -375,12 +375,23 @@ class AdminHandler:
 اختر العملية المطلوبة من القائمة:
             """
         
-        # إرسال رسالة جديدة بدلاً من تعديل القديمة
-        await update.callback_query.message.reply_text(
-            stats_text,
-            reply_markup=AdminHandler.admin_panel_menu(),
-            parse_mode='Markdown'
-        )
+        # تعديل الرسالة الحالية بدلاً من إنشاء رسالة جديدة
+        query = update.callback_query
+        try:
+            await query.edit_message_text(
+                stats_text,
+                reply_markup=AdminHandler.admin_panel_menu(),
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            if "not modified" in str(e).lower():
+                pass
+            else:
+                await query.message.reply_text(
+                    stats_text,
+                    reply_markup=AdminHandler.admin_panel_menu(),
+                    parse_mode='Markdown'
+                )
     
     @staticmethod
     async def admin_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
