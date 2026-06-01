@@ -68,18 +68,35 @@ class iChancyAPI:
     # Singleton-like shared session
     _shared_instance = None
     _last_auth_time = None
-    _auth_ttl = timedelta(minutes=30)
+    _auth_ttl = timedelta(minutes=55)  # Token valid for 1hr, refresh at 55min
 
     # Cached browser cookies (class-level for reuse)
     _browser_cookies = None
+
+    # Pre-authentication state
+    _pre_auth_done = False
+    _pre_auth_task = None
 
     @classmethod
     def get_shared(cls):
         """Get or create a shared API instance."""
         now = datetime.now()
         if cls._shared_instance is None or (cls._last_auth_time and now - cls._last_auth_time > cls._auth_ttl):
+            # Preserve tokens if instance exists and token not expired yet
+            old_token = cls._shared_instance.access_token if cls._shared_instance else None
+            old_token_expires = cls._shared_instance.token_expires_at if cls._shared_instance else None
+            old_cookies = cls._browser_cookies
+
             cls._shared_instance = cls()
             cls._last_auth_time = now
+
+            # Restore token if still valid (avoid unnecessary re-auth)
+            if old_token and old_token_expires and datetime.now() < old_token_expires:
+                cls._shared_instance.access_token = old_token
+                cls._shared_instance.token_expires_at = old_token_expires
+                cls._shared_instance._authenticated = True
+                cls._browser_cookies = old_cookies
+                logger.info("Restored valid token from previous instance")
         return cls._shared_instance
 
     @classmethod
@@ -88,6 +105,7 @@ class iChancyAPI:
         cls._shared_instance = None
         cls._last_auth_time = None
         cls._browser_cookies = None
+        cls._pre_auth_done = False
 
     def __init__(self):
         self.access_token = None
@@ -634,6 +652,52 @@ class iChancyAPI:
         except Exception as e:
             logger.error(f"Authentication error: {e}", exc_info=True)
             return False
+
+    @classmethod
+    async def pre_authenticate(cls):
+        """Pre-authenticate at bot startup so first user request is instant.
+        This runs the browser sign-in once when the bot starts, so that
+        when a user requests account creation, the token is already available
+        and the API call takes only 1-2 seconds instead of 20-40 seconds.
+        """
+        if cls._pre_auth_done:
+            return True
+
+        try:
+            logger.info("🔄 Pre-authenticating with iChancy servers (startup)...")
+            api = cls.get_shared()
+            success = await api.ensure_authenticated()
+
+            if success:
+                cls._pre_auth_done = True
+                logger.info("✅ Pre-authentication successful! API calls will be instant.")
+            else:
+                logger.warning("⚠️ Pre-authentication failed - will retry on first user request")
+
+            return success
+        except Exception as e:
+            logger.error(f"Pre-authentication error: {e}")
+            return False
+
+    @classmethod
+    async def start_auto_refresh(cls):
+        """Background task that refreshes the token before it expires.
+        Runs every 50 minutes to ensure the token never expires during use.
+        """
+        while True:
+            try:
+                await asyncio.sleep(50 * 60)  # 50 minutes
+                logger.info("🔄 Auto-refreshing iChancy authentication token...")
+                cls.reset_shared()
+                api = cls.get_shared()
+                success = await api.ensure_authenticated()
+                if success:
+                    logger.info("✅ Auto-refresh successful")
+                else:
+                    logger.warning("⚠️ Auto-refresh failed - will retry on next API call")
+            except Exception as e:
+                logger.error(f"Auto-refresh error: {e}")
+                await asyncio.sleep(60)  # Wait 1 min before retry
 
     async def _do_signin(self):
         """Perform sign-in using the best available method."""

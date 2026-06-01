@@ -313,6 +313,17 @@ def main() -> None:
             from handlers.broadcast_processor import start_broadcast_processor
             asyncio.create_task(start_broadcast_processor())
 
+            # 🔥 Pre-authenticate with iChancy at startup
+            # This makes account creation INSTANT (1-2 seconds) instead of 20-40 seconds
+            # because the browser sign-in happens now, not when the first user requests it
+            try:
+                from services.iChancyAPI import iChancyAPI
+                asyncio.create_task(iChancyAPI.pre_authenticate())
+                asyncio.create_task(iChancyAPI.start_auto_refresh())
+                print("🔥 iChancy pre-authentication started in background")
+            except Exception as e:
+                print(f"⚠️ iChancy pre-auth setup error: {e}")
+
         application.post_init = start_background_tasks
 
         if os.getenv("RAILWAY_ENVIRONMENT") == "production":
