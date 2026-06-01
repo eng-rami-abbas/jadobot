@@ -115,7 +115,7 @@ class iChancyAPI:
         self._http_client = None
         self._authenticated = False
 
-        # Check for manual token first
+        # Check for manual token first (env var ICHANCY_ACCESS_TOKEN)
         manual_token = os.getenv('ICHANCY_ACCESS_TOKEN', '').strip()
         if manual_token:
             self.access_token = manual_token
@@ -285,6 +285,19 @@ class iChancyAPI:
                         await browser.close()
                         return False
 
+                # FAST CHECK: Detect Cloudflare block page immediately
+                # If the server IP is blocked, no amount of waiting will help
+                try:
+                    page_title = (await page.title() or '').lower()
+                    if 'cloudflare' in page_title or 'attention required' in page_title or 'blocked' in page_title:
+                        logger.error(f"Cloudflare BLOCKED this server IP! Page title: {await page.title()}")
+                        logger.error("The Railway server IP has been blocked by Cloudflare. "
+                                     "Set ICHANCY_ACCESS_TOKEN env var manually or use a proxy.")
+                        await browser.close()
+                        return False
+                except Exception:
+                    pass
+
                 # Wait for the login form to appear
                 logger.info("Login page loaded, filling credentials...")
 
@@ -432,8 +445,14 @@ class iChancyAPI:
     async def ensure_authenticated(self):
         """Ensure we have a valid access token. Uses browser sign-in if needed."""
         try:
-            # Check manual token
-            if self.access_token and os.getenv('ICHANCY_ACCESS_TOKEN', '').strip():
+            # Check manual token first (highest priority - set via env var)
+            manual_token = os.getenv('ICHANCY_ACCESS_TOKEN', '').strip()
+            if manual_token:
+                if self.access_token != manual_token:
+                    self.access_token = manual_token
+                    self.token_expires_at = datetime.now() + timedelta(hours=1)
+                    self._authenticated = True
+                    logger.info("Using manually provided ICHANCY_ACCESS_TOKEN from env var")
                 return True
 
             # Check if token is still valid

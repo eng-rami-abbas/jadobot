@@ -44,9 +44,13 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
+# Verify playwright-stealth is installed
+RUN python -c "from playwright_stealth import stealth_async; print('playwright-stealth OK')" || \
+    pip install playwright-stealth
+
 # Install Playwright Firefox browser with system dependencies AS the app user
 USER app
-RUN playwright install firefox
+RUN playwright install firefox --with-deps
 USER root
 
 # Copy application code
