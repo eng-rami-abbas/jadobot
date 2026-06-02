@@ -1,0 +1,31 @@
+# Core Telegram Bot
+python-telegram-bot[webhooks]==20.8
+supabase==2.8.1
+python-dotenv==1.0.0
+
+# HTTP and Web
+httpx~=0.26.0
+requests==2.32.4
+flask==3.0.0
+Werkzeug==3.0.1
+
+# Timezone and Dates
+pytz
+
+# Browser Automation (for iChancy Cloudflare bypass)
+playwright>=1.40.0
+playwright-stealth>=1.0.6
+
+# Data Processing (updated versions)
+numpy==1.26.4
+pandas==2.2.2
+matplotlib==3.7.3
+
+# System Monitoring
+psutil==5.9.8
+
+# Task Scheduling
+schedule==1.2.2
+
+# Development and Production
+gunicorn==21.2.0
