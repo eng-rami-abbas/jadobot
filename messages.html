@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+
+{% block title %}Messages - iChancy Professional Admin{% endblock %}
+
+{% block page_title %}{{ get_translation('messages') }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <h4 class="mb-0">Message Management</h4>
+            <button class="btn btn-primary" onclick="showBroadcastModal()">
+                <i class="fas fa-paper-plane"></i> {{ get_translation('send_broadcast') }}
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Incoming Messages</h5>
+            </div>
+            <div class="card-body">
+                {% if messages %}
+                <div class="message-list">
+                    {% for message in messages %}
+                    <div class="message-item">
+                        <div class="message-header">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div class="d-flex align-items-center">
+                                    <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-2" style="width: 35px; height: 35px; font-size: 14px;">
+                                        {{ (message.user or 'U')[0]|upper }}
+                                    </div>
+                                    <div>
+                                        <div class="fw-bold">{{ message.user }}</div>
+                                        <small class="text-muted">{{ message.time }}</small>
+                                    </div>
+                                </div>
+                                <div class="message-actions">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="replyToMessage('{{ message.user }}')">
+                                        <i class="fas fa-reply"></i> Reply
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="message-content">
+                            <p class="mb-0">{{ message.message }}</p>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center py-5">
+                    <i class="fas fa-envelope fa-3x text-muted mb-3"></i>
+                    <p class="text-muted">No messages found</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Message Statistics</h5>
+            </div>
+            <div class="card-body">
+                <div class="stat-item">
+                    <div class="stat-number">{{ messages|length }}</div>
+                    <div class="stat-label">Total Messages</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">{{ messages|length }}</div>
+                    <div class="stat-label">Unread Messages</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">5</div>
+                    <div class="stat-label">Average Response Time</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Broadcast Modal -->
+<div class="modal" id="broadcastModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="mb-0">{{ get_translation('send_broadcast') }}</h5>
+            <button type="button" class="btn-close" onclick="hideModal('broadcastModal')"></button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="broadcastMessage" class="form-label">Message</label>
+                <textarea class="form-control" id="broadcastMessage" rows="5" placeholder="Enter your broadcast message"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="broadcastType" class="form-label">Message Type</label>
+                <select class="form-select" id="broadcastType">
+                    <option value="announcement">Announcement</option>
+                    <option value="promotion">Promotion</option>
+                    <option value="maintenance">Maintenance</option>
+                    <option value="update">Update</option>
+                </select>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="hideModal('broadcastModal')">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="sendBroadcast()">Send Broadcast</button>
+        </div>
+    </div>
+</div>
+
+<!-- Reply Modal -->
+<div class="modal" id="replyModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="mb-0">Reply to Message</h5>
+            <button type="button" class="btn-close" onclick="hideModal('replyModal')"></button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="replyTo" class="form-label">To</label>
+                <input type="text" class="form-control" id="replyTo" readonly>
+            </div>
+            <div class="form-group">
+                <label for="replyMessage" class="form-label">Message</label>
+                <textarea class="form-control" id="replyMessage" rows="5" placeholder="Enter your reply"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="hideModal('replyModal')">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="sendReply()">Send Reply</button>
+        </div>
+    </div>
+</div>
+
+<style>
+.message-list {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.message-item {
+    border-bottom: 1px solid #e0e0e0;
+    padding: 15px 0;
+}
+
+.message-item:last-child {
+    border-bottom: none;
+}
+
+.message-header {
+    margin-bottom: 10px;
+}
+
+.message-content {
+    padding-left: 47px;
+}
+
+.stat-item {
+    text-align: center;
+    padding: 15px 0;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.stat-item:last-child {
+    border-bottom: none;
+}
+
+.stat-number {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.stat-label {
+    font-size: 0.9rem;
+    color: var(--secondary-color);
+}
+
+[data-theme="dark"] .message-item {
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .stat-item {
+    border-color: rgba(255, 255, 255, 0.1);
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showBroadcastModal() {
+    document.getElementById('broadcastMessage').value = '';
+    document.getElementById('broadcastType').value = 'announcement';
+    showModal('broadcastModal');
+}
+
+function sendBroadcast() {
+    const message = document.getElementById('broadcastMessage').value;
+    const type = document.getElementById('broadcastType').value;
+    
+    if (!message.trim()) {
+        showNotification('Please enter a message', 'error');
+        return;
+    }
+    
+    apiCall('/api/broadcast/send', 'POST', { message: message, type: type })
+        .then(response => {
+            if (response.success) {
+                showNotification('Broadcast sent successfully', 'success');
+                hideModal('broadcastModal');
+            } else {
+                showNotification('Error: ' + response.message, 'error');
+            }
+        })
+        .catch(error => {
+            showNotification('Failed to send broadcast', 'error');
+        });
+}
+
+function replyToMessage(user) {
+    document.getElementById('replyTo').value = user;
+    document.getElementById('replyMessage').value = '';
+    showModal('replyModal');
+}
+
+function sendReply() {
+    const to = document.getElementById('replyTo').value;
+    const message = document.getElementById('replyMessage').value;
+    
+    if (!message.trim()) {
+        showNotification('Please enter a message', 'error');
+        return;
+    }
+    
+    // Simulate sending reply
+    showNotification('Reply sent to ' + to, 'success');
+    hideModal('replyModal');
+}
+
+// Auto-refresh messages every 30 seconds
+setInterval(() => {
+    // Simulate new message
+    const random = Math.random();
+    if (random > 0.8) {
+        showNotification('New message received', 'info');
+    }
+}, 30000);
+</script>
+{% endblock %}

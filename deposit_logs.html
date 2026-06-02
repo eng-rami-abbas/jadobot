@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% block title %}Deposit Logs - iChancy Professional Admin{% endblock %}
+
+{% block page_title %}{{ get_translation('deposit_logs') }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <h4 class="mb-0">Deposit Transaction Logs</h4>
+            <div class="d-flex gap-2">
+                <input type="text" class="form-control" placeholder="Search deposits..." id="searchInput" style="width: 250px;">
+                <select class="form-select" id="statusFilter" style="width: 150px;">
+                    <option value="">All Status</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                </select>
+                <select class="form-select" id="methodFilter" style="width: 150px;">
+                    <option value="">All Methods</option>
+                    <option value="syriatel_cash">Syriatel Cash</option>
+                    <option value="mtn_cash">MTN Cash</option>
+                    <option value="sham_cash_auto">Sham Cash Auto</option>
+                    <option value="bemo">Bemo</option>
+                    <option value="payeer">Payeer</option>
+                    <option value="crypto">USDT Crypto</option>
+                </select>
+                <button class="btn btn-primary" onclick="exportDeposits()">
+                    <i class="fas fa-download"></i> Export
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        {% if deposits %}
+        <div class="table-responsive">
+            <table class="table" id="depositsTable">
+                <thead>
+                    <tr>
+                        <th><i class="fas fa-hashtag"></i> ID</th>
+                        <th><i class="fas fa-user"></i> User</th>
+                        <th><i class="fas fa-tag"></i> Method</th>
+                        <th><i class="fas fa-money-bill"></i> Amount</th>
+                        <th><i class="fas fa-receipt"></i> Transfer #</th>
+                        <th><i class="fas fa-calendar"></i> Date</th>
+                        <th><i class="fas fa-flag"></i> Status</th>
+                        <th><i class="fas fa-cog"></i> Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for deposit in deposits %}
+                    <tr>
+                        <td><span class="badge badge-primary">#{{ deposit.id }}</span></td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="rounded-circle bg-success text-white d-flex align-items-center justify-content-center me-2" style="width: 35px; height: 35px; font-size: 14px;">
+                                    {{ (deposit.username or 'U')[0]|upper }}
+                                </div>
+                                <div>
+                                    <div class="fw-bold">{{ deposit.username or 'Unknown' }}</div>
+                                    <small class="text-muted">ID: {{ deposit.telegram_id }}</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge badge-info">{{ deposit.method or 'N/A' }}</span>
+                        </td>
+                        <td>
+                            <span class="badge badge-success">{{ "{:,}".format(int(deposit.amount)) }} SYP</span>
+                        </td>
+                        <td>
+                            <code class="text-muted">{{ deposit.transfer_num or 'N/A' }}</code>
+                        </td>
+                        <td>
+                            <small class="text-muted">{{ deposit.created_at[:16] if deposit.created_at else 'N/A' }}</small>
+                        </td>
+                        <td>
+                            <span class="badge badge-{{ 
+                                'success' if deposit.status == 'approved' else
+                                'danger' if deposit.status == 'rejected' else 'warning' }}">
+                                {{ deposit.status.title() }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if deposit.status == 'pending' %}
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-success btn-sm" onclick="approveDeposit({{ deposit.id }})">
+                                    <i class="fas fa-check"></i>
+                                </button>
+                                <button class="btn btn-danger btn-sm" onclick="rejectDeposit({{ deposit.id }})">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            {% else %}
+                            <span class="text-muted small">Processed</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-arrow-down fa-3x text-muted mb-3"></i>
+            <p class="text-muted">No deposit records found</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="row mt-4">
+    <div class="col-lg-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <div class="stat-number">{{ deposits|length }}</div>
+                <div class="stat-label">Total Deposits</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <div class="stat-number">{{ deposits|selectattr('status', 'equalto', 'pending')|list|length }}</div>
+                <div class="stat-label">Pending</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <div class="stat-number">{{ deposits|selectattr('status', 'equalto', 'approved')|list|length }}</div>
+                <div class="stat-label">Approved</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <div class="stat-number">{{ deposits|selectattr('status', 'equalto', 'rejected')|list|length }}</div>
+                <div class="stat-label">Rejected</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function approveDeposit(depositId) {
+    if (confirm('Are you sure you want to approve this deposit?')) {
+        apiCall(`/api/transactions/${depositId}/approve`, 'POST')
+            .then(response => {
+                if (response.success) {
+                    showNotification('Deposit approved successfully', 'success');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showNotification('Error: ' + response.message, 'error');
+                }
+            })
+            .catch(error => {
+                showNotification('Failed to approve deposit', 'error');
+            });
+    }
+}
+
+function rejectDeposit(depositId) {
+    if (confirm('Are you sure you want to reject this deposit?')) {
+        apiCall(`/api/transactions/${depositId}/reject`, 'POST')
+            .then(response => {
+                if (response.success) {
+                    showNotification('Deposit rejected successfully', 'warning');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showNotification('Error: ' + response.message, 'error');
+                }
+            })
+            .catch(error => {
+                showNotification('Failed to reject deposit', 'error');
+            });
+    }
+}
+
+function exportDeposits() {
+    showNotification('Export feature coming soon', 'info');
+}
+
+// Filter functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('searchInput');
+    const statusFilter = document.getElementById('statusFilter');
+    const methodFilter = document.getElementById('methodFilter');
+    
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase();
+            const rows = document.querySelectorAll('#depositsTable tbody tr');
+            
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(searchTerm) ? '' : 'none';
+            });
+        });
+    }
+    
+    if (statusFilter) {
+        statusFilter.addEventListener('change', function() {
+            const status = this.value;
+            const rows = document.querySelectorAll('#depositsTable tbody tr');
+            
+            rows.forEach(row => {
+                if (status === '') {
+                    row.style.display = '';
+                } else {
+                    const badge = row.querySelector('.badge-success, .badge-danger, .badge-warning');
+                    const badgeText = badge ? badge.textContent.toLowerCase() : '';
+                    row.style.display = badgeText.includes(status) ? '' : 'none';
+                }
+            });
+        });
+    }
+    
+    if (methodFilter) {
+        methodFilter.addEventListener('change', function() {
+            const method = this.value;
+            const rows = document.querySelectorAll('#depositsTable tbody tr');
+            
+            rows.forEach(row => {
+                if (method === '') {
+                    row.style.display = '';
+                } else {
+                    const badge = row.querySelector('.badge-info');
+                    const badgeText = badge ? badge.textContent.toLowerCase() : '';
+                    row.style.display = badgeText.includes(method) ? '' : 'none';
+                }
+            });
+        });
+    }
+});
+</script>
+{% endblock %}
