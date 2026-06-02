@@ -169,7 +169,7 @@ class SupportSystem:
 • للاستفسارات الرسمية
 
 4️⃣ **صفحة الفيسبوك:**
-• https://www.facebook.com/ichancy.co
+• https://www.facebook.com/jado.ichancy
 • آخر الأخبار والعروض
 
 🎯 **للمساعدة السريعة:**
@@ -454,7 +454,7 @@ https://www.ichancy.com/ar/contact-us
 support@ichancy.com
 
 🌐 **صفحة الفيسبوك:**
-https://www.facebook.com/ichancy.co
+https://www.facebook.com/jado.ichancy
 
 📱 **قناة التليجرام:**
 https://t.me/jado_ichancy
