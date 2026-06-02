@@ -137,11 +137,11 @@ class SupportSystem:
         },
         "website": {
             "question": "🌐 ما هو رابط الموقع؟",
-            "answer": "🔗 رابط الموقع الرسمي:\nhttps://www.ichancy.com/ar\n📱 رابط الدعم المباشر:\nhttps://direct.lc.chat/16220229/"
+            "answer": "🔗 رابط الموقع الرسمي:\nhttps://www.ichancy.com/ar\n📱 رابط الدعم المباشر:\nhttps://www.ichancy.com/ar/contact-us"
         },
         "support": {
             "question": "📞 كيف أتواصل مع الدعم؟",
-            "answer": "📞 طرق التواصل:\n• @ichancy_support (تليجرام)\n• support@ichancy.com (بريد)\n• https://www.ichancy.com/support (موقع)"
+            "answer": "📞 طرق التواصل:\n• https://t.me/jado_ichancy (تليجرام)\n• support@ichancy.com (بريد)\n• https://www.ichancy.com/support (موقع)"
         }
     }
     
@@ -161,7 +161,7 @@ class SupportSystem:
 • مشاكل تقنية في البوت فقط
 
 2️⃣ **الدعم الفني للموقع:**
-• https://direct.lc.chat/16220229/
+• https://www.ichancy.com/ar/contact-us
 • مشاكل في الموقع أو الحسابات
 
 3️⃣ **البريد الإلكتروني:**
@@ -448,7 +448,7 @@ class SupportSystem:
 🔗 **روابط التواصل الرسمية:**
 
 📱 **الدعم الفني للموقع:**
-https://direct.lc.chat/16220229/
+https://www.ichancy.com/ar/contact-us
 
 📧 **البريد الإلكتروني:**
 support@ichancy.com
@@ -457,7 +457,7 @@ support@ichancy.com
 https://www.facebook.com/ichancy.co
 
 📱 **قناة التليجرام:**
-@ichancy_support
+https://t.me/jado_ichancy
 
 🎯 **للاستفسارات العاجلة:**
 • استخدم الرابط المباشر أعلاه
