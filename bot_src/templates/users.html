@@ -1,0 +1,318 @@
+{% extends "base.html" %}
+
+{% block title %}Users - iChancy Professional Admin{% endblock %}
+
+{% block page_title %}{{ get_translation('users') }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <h4 class="mb-0">{{ get_translation('user_management') }}</h4>
+            <div class="d-flex gap-2">
+                <input type="text" class="form-control" placeholder="Search users..." id="searchInput" style="width: 250px;">
+                <select class="form-select" id="statusFilter" style="width: 150px;">
+                    <option value="">All Status</option>
+                    <option value="active">Active</option>
+                    <option value="blocked">Blocked</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        {% if users %}
+        <div class="table-responsive">
+            <table class="table" id="usersTable">
+                <thead>
+                    <tr>
+                        <th><i class="fas fa-hashtag"></i> ID</th>
+                        <th><i class="fas fa-user"></i> Username</th>
+                        <th><i class="fas fa-wallet"></i> Balance</th>
+                        <th><i class="fas fa-calendar"></i> Joined</th>
+                        <th><i class="fas fa-shield-alt"></i> Status</th>
+                        <th><i class="fas fa-cog"></i> Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td><span class="badge badge-primary">#{{ user.id }}</span></td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-2" style="width: 35px; height: 35px; font-size: 14px;">
+                                    {{ (user.username or 'U')[0]|upper }}
+                                </div>
+                                <div>
+                                    <div class="fw-bold">{{ user.username or 'Unknown' }}</div>
+                                    <small class="text-muted">ID: {{ user.telegram_id }}</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge badge-success">{{ "{:,}".format(int(user.balance)) }} SYP</span>
+                        </td>
+                        <td>
+                            <small class="text-muted">{{ user.created_at[:10] if user.created_at else 'N/A' }}</small>
+                        </td>
+                        <td>
+                            <span class="badge badge-{{ 'success' if not user.get('blocked', False) else 'danger' }}">
+                                {{ 'Active' if not user.get('blocked', False) else 'Blocked' }}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="viewOperations({{ user.id }})">
+                                    <i class="fas fa-history"></i>
+                                </button>
+                                <button class="btn btn-outline-success" onclick="giftBalance({{ user.id }})">
+                                    <i class="fas fa-gift"></i>
+                                </button>
+                                <button class="btn btn-outline-warning" onclick="withdrawBalance({{ user.id }})">
+                                    <i class="fas fa-minus"></i>
+                                </button>
+                                <button class="btn btn-outline-danger" onclick="blockUser({{ user.id }})">
+                                    <i class="fas fa-ban"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-users fa-3x text-muted mb-3"></i>
+            <p class="text-muted">No users found</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Operations Modal -->
+<div class="modal" id="operationsModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="mb-0">{{ get_translation('operations_log') }}</h5>
+            <button type="button" class="btn-close" onclick="hideModal('operationsModal')"></button>
+        </div>
+        <div class="modal-body">
+            <div class="table-responsive">
+                <table class="table" id="operationsTable">
+                    <thead>
+                        <tr>
+                            <th><i class="fas fa-hashtag"></i> ID</th>
+                            <th><i class="fas fa-tag"></i> Type</th>
+                            <th><i class="fas fa-money-bill"></i> Amount</th>
+                            <th><i class="fas fa-calendar"></i> Date</th>
+                            <th><i class="fas fa-flag"></i> Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="operationsTableBody">
+                        <!-- Operations will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Gift Balance Modal -->
+<div class="modal" id="giftBalanceModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="mb-0">{{ get_translation('gift_balance') }}</h5>
+            <button type="button" class="btn-close" onclick="hideModal('giftBalanceModal')"></button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="giftAmount" class="form-label">Amount (SYP)</label>
+                <input type="number" class="form-control" id="giftAmount" min="1" placeholder="Enter amount">
+            </div>
+            <div class="form-group">
+                <label for="giftReason" class="form-label">Reason</label>
+                <textarea class="form-control" id="giftReason" rows="3" placeholder="Enter reason (optional)"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="hideModal('giftBalanceModal')">Cancel</button>
+            <button type="button" class="btn btn-success" onclick="saveGiftBalance()">Gift Balance</button>
+        </div>
+    </div>
+</div>
+
+<!-- Withdraw Balance Modal -->
+<div class="modal" id="withdrawBalanceModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="mb-0">{{ get_translation('withdraw_balance') }}</h5>
+            <button type="button" class="btn-close" onclick="hideModal('withdrawBalanceModal')"></button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="withdrawAmount" class="form-label">Amount (SYP)</label>
+                <input type="number" class="form-control" id="withdrawAmount" min="1" placeholder="Enter amount">
+            </div>
+            <div class="form-group">
+                <label for="withdrawReason" class="form-label">Reason</label>
+                <textarea class="form-control" id="withdrawReason" rows="3" placeholder="Enter reason (optional)"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="hideModal('withdrawBalanceModal')">Cancel</button>
+            <button type="button" class="btn btn-warning" onclick="saveWithdrawBalance()">Withdraw Balance</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentUser = null;
+
+function viewOperations(userId) {
+    currentUser = userId;
+    
+    // Load operations for the user
+    const users = {{ users|tojson }};
+    const user = users.find(u => u.id === userId);
+    
+    if (user && user.operations) {
+        const tbody = document.getElementById('operationsTableBody');
+        tbody.innerHTML = '';
+        
+        user.operations.forEach(op => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><span class="badge badge-primary">#${op.id}</span></td>
+                <td><span class="badge badge-${op.type === 'deposit' ? 'success' : 'danger'}">${op.type}</span></td>
+                <td>${formatCurrency(op.amount)}</td>
+                <td>${formatDate(op.created_at)}</td>
+                <td><span class="badge badge-${op.status === 'approved' ? 'success' : op.status === 'rejected' ? 'danger' : 'warning'}">${op.status}</span></td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+    
+    showModal('operationsModal');
+}
+
+function giftBalance(userId) {
+    currentUser = userId;
+    document.getElementById('giftAmount').value = '';
+    document.getElementById('giftReason').value = '';
+    showModal('giftBalanceModal');
+}
+
+function withdrawBalance(userId) {
+    currentUser = userId;
+    document.getElementById('withdrawAmount').value = '';
+    document.getElementById('withdrawReason').value = '';
+    showModal('withdrawBalanceModal');
+}
+
+function saveGiftBalance() {
+    const amount = document.getElementById('giftAmount').value;
+    const reason = document.getElementById('giftReason').value;
+    
+    if (!amount || amount <= 0) {
+        showNotification('Please enter a valid amount', 'error');
+        return;
+    }
+    
+    apiCall(`/api/users/${currentUser}/gift_balance`, 'POST', { amount: parseInt(amount) })
+        .then(response => {
+            if (response.success) {
+                showNotification('Balance gifted successfully', 'success');
+                hideModal('giftBalanceModal');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showNotification('Error: ' + response.message, 'error');
+            }
+        })
+        .catch(error => {
+            showNotification('Failed to gift balance', 'error');
+        });
+}
+
+function saveWithdrawBalance() {
+    const amount = document.getElementById('withdrawAmount').value;
+    const reason = document.getElementById('withdrawReason').value;
+    
+    if (!amount || amount <= 0) {
+        showNotification('Please enter a valid amount', 'error');
+        return;
+    }
+    
+    apiCall(`/api/users/${currentUser}/withdraw_balance`, 'POST', { amount: parseInt(amount) })
+        .then(response => {
+            if (response.success) {
+                showNotification('Balance withdrawn successfully', 'success');
+                hideModal('withdrawBalanceModal');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showNotification('Error: ' + response.message, 'error');
+            }
+        })
+        .catch(error => {
+            showNotification('Failed to withdraw balance', 'error');
+        });
+}
+
+function blockUser(userId) {
+    if (confirm('Are you sure you want to block this user?')) {
+        apiCall(`/api/users/${userId}/block`, 'POST')
+            .then(response => {
+                if (response.success) {
+                    showNotification('User blocked successfully', 'warning');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showNotification('Error: ' + response.message, 'error');
+                }
+            })
+            .catch(error => {
+                showNotification('Failed to block user', 'error');
+            });
+    }
+}
+
+// Search functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('searchInput');
+    const statusFilter = document.getElementById('statusFilter');
+    
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase();
+            const rows = document.querySelectorAll('#usersTable tbody tr');
+            
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(searchTerm) ? '' : 'none';
+            });
+        });
+    }
+    
+    if (statusFilter) {
+        statusFilter.addEventListener('change', function() {
+            const status = this.value;
+            const rows = document.querySelectorAll('#usersTable tbody tr');
+            
+            rows.forEach(row => {
+                if (status === '') {
+                    row.style.display = '';
+                } else {
+                    const badge = row.querySelector('.badge-danger, .badge-success');
+                    const isActive = badge && badge.classList.contains('badge-success');
+                    const shouldShow = (status === 'active' && isActive) || (status === 'blocked' && !isActive);
+                    row.style.display = shouldShow ? '' : 'none';
+                }
+            });
+        });
+    }
+});
+</script>
+{% endblock %}
