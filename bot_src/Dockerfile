@@ -7,7 +7,7 @@ WORKDIR /app
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    RAILWAY_ENVIRONMENT=production
+    
 
 # Install system dependencies required for Playwright Firefox
 RUN apt-get update && apt-get install -y \
