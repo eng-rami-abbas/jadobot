@@ -327,6 +327,7 @@ def main() -> None:
             )
         else:
             print("Starting bot in polling mode (development)")
+            asyncio.set_event_loop(asyncio.new_event_loop())
             application.run_polling()
 
     except Exception as e:
